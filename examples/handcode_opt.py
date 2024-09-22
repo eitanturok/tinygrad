@@ -1,3 +1,6 @@
+from icecream import install
+install()
+
 from typing import List, Tuple
 from extra.models.resnet import ResNet50
 from extra.mcts_search import mcts_search

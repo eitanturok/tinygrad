@@ -18,6 +18,10 @@ class MCTSNode:
     self.parents: List[MCTSNode] = [parent] if parent is not None else []
     self.children: Optional[List[MCTSNode]] = None
     self.removed_children: List[MCTSNode] = []
+  # def __repr__(self):
+  #   return f"kernel {self.i:2d} {self.tm/1e3:7.2f} ms {self.kernel.name}\taction={self.action}\t{'parent=' + self.parents[0].kernel.name if self.parents else ''}"
+  # def __str__(self):
+  #   return self.__repr__()
 
 def expand_node(node:MCTSNode):
   assert node.children is None
@@ -152,9 +156,9 @@ def mcts_search(lin:Kernel, rawbufs:List[Buffer], amt:int) -> Kernel:
     G = nx.DiGraph()
     def add_node(node:MCTSNode):
       if node.n == 0: return
-      for parent in node.parents: G.add_edge(parent, node)
       gopts = node.kernel.applied_opts
       edge_lbl = f"{str(gopts[-1].op)[7:]} {gopts[-1].axis} {gopts[-1].amt}" if len(gopts) else "ROOT"
+      for parent in node.parents: G.add_edge(parent, node, )
       G.add_node(node, label=f"{node.i+1}\n{node.tm:.2f} us\n{edge_lbl}\nt {node.t:.2f}\nn {node.n}",
                  fillcolor="#80ff8080" if node.tm == best_tm else "#ffff8080", style='filled' if node.t == best_tm else '')
       if node.children is not None:
@@ -162,6 +166,21 @@ def mcts_search(lin:Kernel, rawbufs:List[Buffer], amt:int) -> Kernel:
     add_node(root)
     save_graph(G, f"{GRAPHPATH}.{graph_mcts_cnt}.mcts", '-Grankdir=LR')
     graph_mcts_cnt += 1
+
+  if getenv("TRACK_MCTS_STATS"):
+    stats = [['time', 'parent time', 'diff', 'rdiff', 'opt', 'kernel', 'parent kernel']]
+    def traverse(node:MCTSNode):
+      if node.n == 0: return
+      if node.children is None: return
+      for child in node.children + node.removed_children:
+        if not math.isinf(child.tm):
+          diff = child.tm if math.isinf(node.tm) else child.tm - node.tm
+          rdiff = (child.tm - node.tm) / child.tm * 100
+          stats.append((child.tm, node.tm, diff, rdiff, child.kernel.applied_opts, child.kernel.name, node.kernel.name))
+        traverse(child)
+    traverse(root)
+    with open(f'./tmp/mcts_stat_{graph_mcts_cnt}.tsv', 'w') as f:
+      for stat in stats: f.write('\t'.join(map(str, stat)) + '\n')
 
   if CACHELEVEL >= 1: diskcache_put("mcts_search", key, best.applied_opts)
   return best
