@@ -755,7 +755,7 @@ class Tensor(SimpleMathTrait):  # pylint: disable=abstract-method
   @staticmethod
   def normal(*shape, mean=0.0, std=1.0, **kwargs) -> Tensor:
     """
-    Creates a tensor with the given shape, filled with random values from a normal distribution with the given `mean` and standard deviation `std`.
+    Creates a tensor with the given shape, filled with random values from a normal distribution with the given mean `mean` and standard deviation `std`.
 
     You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
     Additionally, all other keyword arguments are passed to the constructor of the tensor.
@@ -766,6 +766,23 @@ class Tensor(SimpleMathTrait):  # pylint: disable=abstract-method
     ```
     """
     return (std * Tensor.randn(*shape, **kwargs)) + mean
+
+  @staticmethod
+  def trunc_normal(*shape, mean=0.0, std=1.0, a=-2.0, b=2.0, **kwargs) -> Tensor:
+    """
+    Creates a tensor with the given shape, filled with random values from a truncated normal distribution with the given mean `mean` and standard deviation `std`.
+    Values are truncated to be in the interval [a, b].
+
+    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
+    Additionally, all other keyword arguments are passed to the constructor of the tensor.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    Tensor.manual_seed(42)
+    print(Tensor.trunc_normal(2, 3, mean=10, std=2, a=0, b=1).numpy())
+    ```
+    """
+    return Tensor.normal(*shape, mean=mean, std=std, **kwargs).clip(a, b)
+
 
   @staticmethod
   def uniform(*shape, low=0.0, high=1.0, **kwargs) -> Tensor:
@@ -2544,6 +2561,7 @@ class Tensor(SimpleMathTrait):  # pylint: disable=abstract-method
     """
     Clips (clamps) the values in the tensor between `min_` and `max_` element-wise.
     If `min_` is `None`, there is no lower bound. If `max_` is None, there is no upper bound.
+    If `min_` is greater than `max_`, `clamp` set all elements to the value of `max_`.
 
     ```python exec="true" source="above" session="tensor" result="python"
     print(Tensor([-3., -2., -1., 0., 1., 2., 3.]).clip(-1, 1).numpy())
