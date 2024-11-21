@@ -107,6 +107,7 @@ class TestOps(unittest.TestCase):
       Tensor.randn,
       Tensor.randint,
       Tensor.normal,
+      Tensor.trunc_normal,
       Tensor.uniform,
       Tensor.scaled_uniform,
       Tensor.glorot_uniform

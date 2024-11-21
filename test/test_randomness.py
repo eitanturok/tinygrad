@@ -55,6 +55,7 @@ def equal_distribution(tiny_func, torch_func=None, numpy_func=None, shape=(40, 4
   x2 = tiny_func(shape).numpy().flatten()
   if numpy_func is not None: y = numpy_func(shape).flatten()
   if torch_func is not None: z = torch_func(shape).numpy().flatten()
+  print(f'{x1=}\n{x2=}\n{y=}\n{z=}')
   return (numpy_func is None or (kstest(x1, y) >= alpha and kstest(x2, y) >= alpha)) and \
     (torch_func is None or (kstest(x1, z) >= alpha and kstest(x2, z) >= alpha))
 
@@ -249,6 +250,14 @@ class TestRandomness(unittest.TestCase):
     self.assertTrue(normal_test(Tensor.normal))
     self.assertTrue(equal_distribution(Tensor.normal, lambda x: torch.nn.init.normal_(torch.empty(x), mean=0, std=1),
                                                       lambda x: np.random.normal(loc=0, scale=1, size=x)))
+
+  def test_trunc_normal(self):
+    # self.assertTrue(normal_test(Tensor.trunc_normal))
+    # self.assertTrue(equal_distribution(Tensor.trunc_normal, lambda x: torch.nn.init.trunc_normal_(torch.empty(x), mean=0, std=1, a=-2.0, b=2.0),
+                                                      # lambda x: np.random.normal(loc=0, scale=1, size=x).clip(-2.0, 2.0)))
+    self.assertTrue(equal_distribution(partial(Tensor.trunc_normal, mean=0, std=100, a=-5, b=50),
+                                       lambda x: torch.nn.init.trunc_normal_(torch.empty(x), mean=0, std=100, a=-5, b=50),
+                                       lambda x: np.random.normal(loc=0, scale=100, size=x).clip(-5, 50)))
 
   def test_uniform(self):
     self.assertFalse(normal_test(Tensor.uniform))
