@@ -90,12 +90,11 @@ def main():
   assert args.model is not None, "please provide --model option"
 
   if args.seed is not None: Tensor.manual_seed(args.seed)
-  if args.benchmark: Tensor.manual_seed(42)
   print(f"seed = {Tensor._seed}")
 
   model = build_transformer(args.model, args.model_size)
-  # tokenizer = Tokenizer(str((args.model if args.model.is_dir() else args.model.parent) / "merges.txt"))
-  tokenizer = AutoTokenizer.from_pretrained("Qwen/QwQ-32B-Preview")
+  tokenizer = Tokenizer(str((args.model if args.model.is_dir() else args.model.parent) / "merges.txt"))
+  # tokenizer = AutoTokenizer.from_pretrained("Qwen/QwQ-32B-Preview")
 
   toks = [tokenizer.bos_id] + tokenizer.encode(args.prompt, allow_special=True)
   start_pos = prefill(model, toks[:-1])
@@ -107,7 +106,6 @@ def main():
     last_tok = tok
     if tok in tokenizer.stop_tokens: break
     print(tokenizer.decode([tok]), end="", flush=True)
-
 
 if __name__ == '__main__':
   main()
