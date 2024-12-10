@@ -328,11 +328,11 @@ class CUDARenderer(CStyleLanguage):
     prefix = ["#define INFINITY (__int_as_float(0x7f800000))","#define NAN (__int_as_float(0x7fffffff))"]
 
     used_dtypes = uops_to_dtypes(uops)
-    if any(dt.scalar() == dtypes.half for dt in used_dtypes): prefix.append("#include <cuda_fp16.h>")
-    if any(dt.scalar() == dtypes.bfloat16 for dt in used_dtypes): prefix.append("#include <cuda_bf16.h>")
+    headers = {dtypes.half: "fp16", dtypes.bfloat16: "bf16", dtypes.fp8_e4m3: "fp8", dtypes.fp8_e5m2: "fp8"}
+    prefix += dedup([f"#include <cuda_{headers[dt.scalar()]}.h>" for dt in used_dtypes if dt.scalar() in headers])
     prefix += [self.render_vector_prefix(dt) for dt in used_dtypes if dt.count in (4,8) and dt.scalar() in {dtypes.half, dtypes.bfloat16}]
 
-    dt_map = { dtypes.half: "f16", dtypes.bfloat16: "bf16" }
+    dt_map = {dtypes.half: "f16", dtypes.bfloat16: "bf16"}
     for name, (N, M, K), dtype_in, dtype_out, _, _, upcast_axes, _ in dedup([uop.arg for uop in uops if uop.op is Ops.WMMA]):
       upcast_sizes = [prod(size for _, size in upcast) for upcast in upcast_axes]
       wmma_dtypes = [self.render_dtype(dtype.vec(size)) for dtype, size in zip([dtype_in, dtype_in, dtype_out], upcast_sizes)]

@@ -206,6 +206,10 @@ class TestBFloat16DTypeCast(unittest.TestCase):
     converted = random_values.cast(dtypes.bfloat16).cast(dtypes.float32)
     np.testing.assert_allclose(converted.numpy(), random_values.cast(dtypes.float32).numpy(), rtol=1e-2, atol=1e-3)
 
+class TestFp8e4m3Dtype(TestDType): DTYPE = dtypes.fp8_e4m3
+
+class TestFp8e5m2Dtype(TestDType): DTYPE = dtypes.fp8_e5m2
+
 class TestHalfDType(TestDType): DTYPE = dtypes.half
 
 class TestFloatDType(TestDType):

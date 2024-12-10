@@ -19,7 +19,7 @@ class DTypeMetaClass(type):
 @dataclass(frozen=True, eq=False)
 class DType(metaclass=DTypeMetaClass):
   priority: int  # this determines when things get upcasted
-  itemsize: int
+  itemsize: int  # in bytes
   name: str
   fmt: Optional[FmtStr]
   count: int
@@ -105,7 +105,7 @@ class dtypes:
   def finfo(dtype:DType) -> Tuple[int, int]:
     """(exponent, mantissa)"""
     if not dtypes.is_float(dtype): raise ValueError(f"{dtype} is not a floating point type")
-    return {dtypes.float16: (5, 10), dtypes.bfloat16: (8, 7), dtypes.float32: (8, 23), dtypes.float64: (11, 52)}[dtype]
+    return {dtypes.fp8_e4m3: (4, 3), dtypes.fp8_e5m2: (5, 2), dtypes.float16: (5, 10), dtypes.bfloat16: (8, 7), dtypes.float32: (8, 23), dtypes.float64: (11, 52)}[dtype]
   @staticmethod
   def fields() -> Dict[str, DType]: return DTYPES_DICT
   void: Final[DType] = DType.new(-1, 0, "void", None)
@@ -118,11 +118,13 @@ class dtypes:
   uint32: Final[DType] = DType.new(6, 4, "unsigned int", 'I')
   int64: Final[DType] = DType.new(7, 8, "long", 'q')
   uint64: Final[DType] = DType.new(8, 8, "unsigned long", 'Q')
-  float16: Final[DType] = DType.new(9, 2, "half", 'e')
+  fp8_e4m3: Final[DType] = DType.new(9, 1, "fp8_e4m3", None)
+  fp8_e5m2: Final[DType] = DType.new(10, 1, "fp8_em5m2", None)
+  float16: Final[DType] = DType.new(11, 2, "half", 'e')
   # bfloat16 has higher priority than float16, so least_upper_dtype(dtypes.int64, dtypes.uint64) = dtypes.float16
-  bfloat16: Final[DType] = DType.new(10, 2, "__bf16", None)
-  float32: Final[DType] = DType.new(11, 4, "float", 'f')
-  float64: Final[DType] = DType.new(12, 8, "double", 'd')
+  bfloat16: Final[DType] = DType.new(12, 2, "__bf16", None)
+  float32: Final[DType] = DType.new(13, 4, "float", 'f')
+  float64: Final[DType] = DType.new(14, 8, "double", 'd')
 
   # dtype aliases
   half = float16; float = float32; double = float64 # noqa: E702
@@ -138,7 +140,7 @@ class dtypes:
   default_float: ClassVar[DType] = float32
   default_int: ClassVar[DType] = int32
 
-  floats = (float16, bfloat16, float32, float64)
+  floats = (fp8_e4m3, fp8_e5m2, float16, bfloat16, float32, float64)
   uints = (uint8, uint16, uint32, uint64)
   sints = (int8, int16, int32, int64)
   ints = uints + sints
@@ -152,10 +154,11 @@ def to_dtype(dtype:DTypeLike) -> DType: return dtype if isinstance(dtype, DType)
 
 # https://jax.readthedocs.io/en/latest/jep/9407-type-promotion.html
 # we don't support weak type and complex type
-promo_lattice = { dtypes.bool: [dtypes.int8, dtypes.uint8], dtypes.int8: [dtypes.int16], dtypes.int16: [dtypes.int32], dtypes.int32: [dtypes.int64],
+promo_lattice = {dtypes.bool: [dtypes.int8, dtypes.uint8], dtypes.int8: [dtypes.int16], dtypes.int16: [dtypes.int32], dtypes.int32: [dtypes.int64],
   dtypes.int64: [dtypes.float16, dtypes.bfloat16], dtypes.uint8: [dtypes.int16, dtypes.uint16], dtypes.uint16: [dtypes.int32, dtypes.uint32],
   dtypes.uint32: [dtypes.int64, dtypes.uint64], dtypes.uint64: [dtypes.float16, dtypes.bfloat16],
-  dtypes.float16: [dtypes.float32], dtypes.bfloat16: [dtypes.float32], dtypes.float32: [dtypes.float64], }
+  dtypes.fp8_e5m2: [dtypes.float16, dtypes.bfloat16], dtypes.fp8_e4m3: [dtypes.float16, dtypes.bfloat16],
+  dtypes.float16: [dtypes.float32], dtypes.bfloat16: [dtypes.float32], dtypes.float32: [dtypes.float64],}
 
 @functools.lru_cache(None)
 def _get_recursive_parents(dtype:DType) -> Set[DType]:
