@@ -212,8 +212,8 @@ class Compiled:
 # TODO: move this to each Device
 def is_dtype_supported(dtype:DType, device:Optional[str]=None) -> bool:
   if device is None: device = Device.DEFAULT
-  if dtype == dtypes.fp8_e4m3 or dtype == dtypes.fp8_e5m2:
-    return device in {"CUDA"} and not CI and not getenv("PTX")
+  # if dtype == dtypes.fp8_e4m3 or dtype == dtypes.fp8_e5m2:
+  #   return device in {"CUDA"} and not CI and not getenv("PTX")
   if dtype == dtypes.bfloat16:
     # NOTE: this requires bf16 buffer support
     return device in {"AMD"} or (device in {"CUDA", "NV"} and not CI and not getenv("PTX"))

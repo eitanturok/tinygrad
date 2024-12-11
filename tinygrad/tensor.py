@@ -152,7 +152,9 @@ class Tensor(SimpleMathTrait):
       if dtype is None:
         if (d := fully_flatten(data)) and all(isinstance(s, bool) for s in d): dtype = dtypes.bool
         else: dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float
-      if dtype == dtypes.bfloat16: data = Tensor(_frompy(data, dtypes.float32), device=device).cast(dtypes.bfloat16).lazydata
+      # floats not support by numpy
+      if dtype in {dtypes.bfloat16, dtypes.fp8_e4m3, dtypes.fp8_e5m2}:
+        data = Tensor(_frompy(data, dtypes.float32), device=device).cast(dtype).lazydata
       else: data = _frompy(data, dtype)
     elif str(type(data)) == "<class 'numpy.ndarray'>":
       import numpy as np
@@ -319,7 +321,7 @@ class Tensor(SimpleMathTrait):
     ```
     """
     import numpy as np
-    if self.dtype.base == dtypes.bfloat16: return self.float().numpy()
+    if self.dtype.base in {dtypes.bfloat16, dtypes.fp8_e4m3, dtypes.fp8_e5m2}: return self.float().numpy()
     assert _to_np_dtype(self.dtype.base) is not None, f"no np dtype for {self.dtype.base}"
     assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
     return np.frombuffer(self._data(), dtype=_to_np_dtype(self.dtype.base)).reshape(self.shape)

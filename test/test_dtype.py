@@ -10,6 +10,7 @@ from tinygrad.tensor import _to_np_dtype
 from hypothesis import given, settings, strategies as strat
 from test.helpers import rand_for_dtype
 import pytest
+
 pytestmark = pytest.mark.filterwarnings("ignore")
 
 settings.register_profile("my_profile", max_examples=200, deadline=None, derandomize=getenv("DERANDOMIZE_CI", False))
@@ -98,6 +99,7 @@ class TestDType(unittest.TestCase):
       lambda dtype: _test_ops(a_dtype=dtype, b_dtype=self.DTYPE) if dtype.itemsize < self.DTYPE.itemsize else None,
       get_available_cast_dtypes(self.DTYPE)
   ))
+
   def test_bitcast(self):
     if self.DTYPE == dtypes.bool: raise unittest.SkipTest("no bools in bitcast")
     list(map(
@@ -110,7 +112,7 @@ class TestDType(unittest.TestCase):
     fields = dtypes.fields()
     self.assertIn("float", fields)
     self.assertIn("float32", fields)
-    self.assertEqual(len(fields), 24)
+    self.assertEqual(len(fields), 26)
     self.assertTrue(all(isinstance(value, DType) for value in fields.values()))
     self.assertTrue(all(issubclass(_to_np_dtype(value), np.generic) for value in fields.values() if _to_np_dtype(value) is not None))
 
