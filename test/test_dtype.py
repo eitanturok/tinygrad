@@ -56,6 +56,7 @@ def _test_cast(a:Tensor, target_dtype:DType):
   if CI and Device.DEFAULT == "CLANG" and (target_dtype, a.dtype) in [(dtypes.double, dtypes.half), (dtypes.half, dtypes.double)]:
     # TODO: cast between double and half are broken https://github.com/tinygrad/tinygrad/issues/4084
     return
+  if a.dtype in {dtypes.fp8_}
 
   _test_op(lambda: a.cast(target_dtype), target_dtype, list(a.numpy().astype(_to_np_dtype(target_dtype))))
 def _test_bitcast(a:Tensor, target_dtype:DType, target=None):
