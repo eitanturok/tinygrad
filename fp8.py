@@ -17,3 +17,4 @@ install()
 devices = [d for d in Device.get_available_devices()]
 t = Tensor([1, 2, 3], dtype=dtypes.fp8_e4m3, device="CUDA")
 ic(t.realize())
+ic(t.numpy())
