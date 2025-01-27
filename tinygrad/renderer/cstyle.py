@@ -289,6 +289,17 @@ class MetalRenderer(CStyleLanguage):
 
 _nms = "xyzwabcdefghijkl"
 
+# CUDA does not handle fp8 arithmetic natively. We cast to float, do arithmetic and cast back.
+fp8_dtypes = (dtypes.fp8_e4m3, dtypes.fp8_e5m2)
+def rewrite_fp8_alu(y):
+  dt = dtypes.float if y.arg not in (Ops.CMPLT, Ops.CMPNE) else dtypes.bool
+  return UOp(GroupOp.ALU, dt, cast(Tuple[UOp],(arg.cast(dtypes.float) for arg in y.src)), y.arg).cast(y.dtype)
+
+fp8_arithmetic_rewriter = PatternMatcher([
+    (UPat(GroupOp.ALU, name="y", src=UPat(dtype=fp8_dtypes), allow_any_len=True), rewrite_fp8_alu),
+    (UPat(Ops.CAST, dtype=fp8_dtypes, name="res", src=UPat(name="x", dtype=fp8_dtypes)), lambda x, res: x.cast(dtypes.float).cast(res.dtype)),
+])
+
 class CUDARenderer(CStyleLanguage):
   device = "CUDA"
   global_max = (2147483647, 65535, 65535)
@@ -316,7 +327,8 @@ class CUDARenderer(CStyleLanguage):
     Ops.EXP2: lambda x,dtype: f"hexp2({x})" if dtype in (dtypes.half, dtypes.bfloat16) else f"exp2({x})",
     Ops.SQRT: lambda x,dtype: f"hsqrt({x})" if dtype in (dtypes.half, dtypes.bfloat16) else f"sqrt({x})",
     Ops.RECIP: lambda x,dtype: f"hrcp({x})" if dtype in (dtypes.half, dtypes.bfloat16) else f"(1/{x})" }
-  type_map = {dtypes.bfloat16: "nv_bfloat16"}
+  type_map = {dtypes.bfloat16: "nv_bfloat16", dtypes.fp8_e5m2: "__nv_fp8_e5m2", dtypes.fp8_e4m3: "__nv_fp8_e4m3"}
+  extra_matcher = fp8_arithmetic_rewriter
 
   def render_vector_prefix(self, dt:DType) -> str:
     vec, scal = self.render_dtype(dt), self.render_dtype(dt.scalar()),

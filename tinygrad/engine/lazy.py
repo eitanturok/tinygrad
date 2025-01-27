@@ -97,6 +97,7 @@ class LazyBuffer(MathTrait):
 
   def bitcast(self, dtype:DType) -> LazyBuffer: return self.cast(dtype, bitcast=True)
   def cast(self, dtype:DType, bitcast:bool=False, allow_buffer_view=True) -> LazyBuffer:
+    ic(self.dtype, dtype, bitcast)
     if self.dtype == dtype: return self
     if self.device.startswith("DISK") and not bitcast: raise RuntimeError("attempted to cast disk buffer (bitcast only)")
     if self.is_unrealized_unmasked_const() and not bitcast:
@@ -112,6 +113,7 @@ class LazyBuffer(MathTrait):
       # TODO: applying this makes gpt2 slower
       return self.base.cast(dtype, bitcast).view(self.st)
     cast_op: Ops = (Ops.BUFFER_VIEW if self.can_view() and allow_buffer_view else Ops.BITCAST) if bitcast else Ops.CAST
+    ic(cast_op)
     return create_lazybuffer(self.device, ShapeTracker.from_shape(new_shape), dtype, cast_op, None, (self,))
 
   def is_unrealized_const(self): return self.base.realized is None and self.base.op is Ops.CONST and not isinstance(self.base.arg, UOp)
