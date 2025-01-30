@@ -43,13 +43,6 @@ class MathTrait:
   def rshift(self, x, reverse=False): return self._binop(Ops.SHR, x, reverse)
   def cmplt(self, x, reverse=False): return self._binop(Ops.CMPLT, x, reverse)
 
-  def reciprocal(self): return self.alu(Ops.RECIP)
-  def sqrt(self): return self.alu(Ops.SQRT)
-  def sin(self): return self.alu(Ops.SIN)
-  def log2(self): return self.alu(Ops.LOG2)
-  def exp2(self): return self.alu(Ops.EXP2)
-  def threefry(self, seed): return self.alu(Ops.THREEFRY, seed)
-
   def __neg__(self): return self.neg()
   def __add__(self, x): return self.add(x)
   def __sub__(self, x): return self.sub(x)
@@ -80,13 +73,20 @@ class MathTrait:
   def __ge__(self, x): return (self < x).logical_not()
   def __le__(self, x): return (self > x).logical_not()
 
+  def reciprocal(self): return self.alu(Ops.RECIP)
+  def sqrt(self): return self.alu(Ops.SQRT)
+  def sin(self): return self.alu(Ops.SIN)
+  def log2(self): return self.alu(Ops.LOG2)
+  def exp2(self): return self.alu(Ops.EXP2)
+
+  def threefry(self, seed): return self.alu(Ops.THREEFRY, seed)
+  def maximum(self, x): return self.alu(Ops.MAX, self.ufix(x))
+  def minimum(self, x): return -(-self).maximum(-x)
   def ne(self, x): return self.alu(Ops.CMPNE, self.ufix(x))
   def eq(self, x): return self.ne(x).logical_not()
   def __ne__(self, x): return self.ne(x)
   # NOTE: __eq__ isn't overridden, and means the same thing as is by default
 
-  def maximum(self, x): return self.alu(Ops.MAX, self.ufix(x))
-  def minimum(self, x): return -(-self).maximum(-x)
   def where(self, x, y): return self.alu(Ops.WHERE, x, x.ufix(y))
 
 # the order of these Ops controls the order of the toposort
