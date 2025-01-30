@@ -13,7 +13,7 @@ class MultiShapeTracker:
   def permute(self, arg): self.sts = [x.permute(arg) for x in self.sts]
   def expand(self, arg): self.sts = [x.expand(arg) for x in self.sts]
   def shrink(self, arg): self.sts = [x.shrink(arg) for x in self.sts]
-  def stride(self, arg): self.sts = [x.stride(arg) for x in self.sts]
+  def flip(self, arg): self.sts = [x.flip(arg) for x in self.sts]
   def pad(self, arg): self.sts = [x.pad(arg) for x in self.sts]
 
 def st_equal(st1:ShapeTracker, st2:ShapeTracker) -> bool:
@@ -75,7 +75,10 @@ class TestShapeTrackerAdd(unittest.TestCase):
     backup = st.sts[0]
     st.sts.append(ShapeTracker.from_shape(backup.shape))
     st.reshape( (45,) )
-    st.stride( (4,) )
+    # st.stride( (4,) )
+    ic(st.sts)
+    st.flip( (0,) )
+    ic(st.sts)
     st.reshape( (4, 3) )
     assert st_equal(backup + st.sts[1], st.sts[0])
 

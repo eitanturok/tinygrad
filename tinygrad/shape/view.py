@@ -273,7 +273,9 @@ class View:
     offset = sum([(s-1)*z for s,z,m in zip(self.shape, self.strides, mul) if m < 0])
     mask = tuple([(ceildiv(mx if m > 0 else s-my, abs(m)), ceildiv(my if m > 0 else s-mx, abs(m))) \
                   for (mx,my),s,m in zip(self.mask, self.shape, mul)]) if self.mask is not None else None
-    return View.create(new_shape, strides, self.offset + offset, mask)
+    ret = View.create(new_shape, strides, self.offset + offset, mask)
+    # ic(arg, self.strides, self.shape, strides, new_shape, ret)
+    return ret
 
   @functools.lru_cache(maxsize=None)  # pylint: disable=method-cache-max-size-none
   def reshape(self, new_shape: tuple[sint, ...]) -> Optional[View]:
