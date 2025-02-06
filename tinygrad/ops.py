@@ -81,6 +81,7 @@ class MathTrait:
   def __le__(self, x): return (self > x).logical_not()
 
   def threefry(self, seed): return self.alu(Ops.THREEFRY, seed)
+  def pow(self, x): return self.alu(Ops.POW, x)
   def maximum(self, x): return self.alu(Ops.MAX, self.ufix(x))
   def minimum(self, x): return -(-self).maximum(-x)
   def ne(self, x): return self.alu(Ops.CMPNE, self.ufix(x))
@@ -90,13 +91,6 @@ class MathTrait:
 
   # ternary ops
   def where(self, x, y): return self.alu(Ops.WHERE, x, x.ufix(y))
-  def threefry(self, seed): return self.alu(Ops.THREEFRY, seed)
-  def reciprocal(self): return self.alu(Ops.RECIP)
-  def sqrt(self): return self.alu(Ops.SQRT)
-  def sin(self): return self.alu(Ops.SIN)
-  def log2(self): return self.alu(Ops.LOG2)
-  def exp2(self): return self.alu(Ops.EXP2)
-  def pow(self, x): return self.alu(Ops.POW, x)
 
 # the order of these Ops controls the order of the toposort
 class Ops(FastEnum):
