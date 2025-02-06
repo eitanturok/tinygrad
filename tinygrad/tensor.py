@@ -182,14 +182,20 @@ class Tensor(MathTrait):
     all_tensors.add(weakref.ref(self))
   def __del__(self): all_tensors.discard(weakref.ref(self))
 
-  def _apply_uop(self, fxn:Callable, *x:Tensor, **kwargs) -> Tensor:
-    new_uop: UOp = fxn(*[t.lazydata for t in (self,)+x], **kwargs)
+  def _apply_uop(self, fxn_or_op:Callable|Ops, *x:Tensor, **kwargs) -> Tensor:
     needs_input_grad = [t.requires_grad for t in (self,)+x]
-    return Tensor(new_uop, device=new_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
+    requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
+    if callable(fxn_or_op): return Tensor(new_uop:=fxn_or_op(*[t.lazydata for t in (self,)+x], **kwargs), device=new_uop.device, requires_grad=requires_grad)
+    return Tensor(self.lazydata.alu(fxn_or_op, *[t.lazydata for t in x], **kwargs), device=self.device, requires_grad=requires_grad)
 
   def _apply_broadcasted_uop(self, fxn:Callable, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
     lhs,rhs = self._broadcasted(x, reverse)
     return lhs._apply_uop(fxn, rhs)
+
+  def alu(self, op:Ops, *src:Tensor) -> Tensor:
+    # cast dtype based on Op
+    if op in {Ops.RECIP, Ops.SQRT, Ops.SIN, Ops.LOG2, Ops.EXP2}: return self.cast(least_upper_float(self.dtype))._apply_uop(op)
+    return self._apply_uop(op, *src)
 
   def requires_grad_(self, requires_grad=True) -> Tensor:
     self.requires_grad = requires_grad
@@ -2508,17 +2514,6 @@ class Tensor(MathTrait):
     ```
     """
     return self.log2()*math.log(2)
-  def log2(self):
-    """
-    Computes the base-2 logarithm element-wise.
-
-    See: https://en.wikipedia.org/wiki/Logarithm
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 4., 8.]).log2().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.log2)
   def exp(self):
     """
     Computes the exponential function element-wise.
@@ -2530,17 +2525,6 @@ class Tensor(MathTrait):
     ```
     """
     return self.mul(1/math.log(2)).exp2()
-  def exp2(self):
-    """
-    Computes the base-2 exponential function element-wise.
-
-    See: https://en.wikipedia.org/wiki/Exponential_function
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([0., 1., 2., 3.]).exp2().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
   def relu(self):
     """
     Applies the Rectified Linear Unit (ReLU) function element-wise.
@@ -2578,16 +2562,6 @@ class Tensor(MathTrait):
     ```
     """
     return (alpha * self + beta).relu() - (alpha * self + beta - 1).relu()
-
-  def sqrt(self):
-    """
-    Computes the square root of the tensor element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 3., 4.]).sqrt().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.sqrt)
   def rsqrt(self):
     """
     Computes the reciprocal of the square root of the tensor element-wise.
@@ -2597,15 +2571,6 @@ class Tensor(MathTrait):
     ```
     """
     return self.reciprocal().sqrt()
-  def sin(self):
-    """
-    Computes the sine of the tensor element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([0., math.pi/2, math.pi, 3*math.pi/2, 2*math.pi]).sin().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.sin)
   def cos(self):
     """
     Computes the cosine of the tensor element-wise.
@@ -2774,15 +2739,6 @@ class Tensor(MathTrait):
     ```
     """
     return self * self.sign()
-  def reciprocal(self):
-    """
-    Compute `1/x` element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 3., 4.]).reciprocal().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.reciprocal)
 
   # ***** activation functions *****
 
