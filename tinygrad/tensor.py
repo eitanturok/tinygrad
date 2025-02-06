@@ -8,7 +8,7 @@ from tinygrad.helpers import argfix, make_tuple, flatten, prod, all_int, round_u
 from tinygrad.helpers import IMAGE, WINO, _METADATA, Metadata, TRACEMETA, ceildiv, fetch, polyN, unwrap
 from tinygrad.engine.multi import get_multi_map
 from tinygrad.gradient import compute_gradient
-from tinygrad.ops import smax, smin, resolve, UOp, Ops, sint, Variable, SimpleMathTrait, identity_element
+from tinygrad.ops import smax, smin, resolve, UOp, Ops, MathTrait, sint, Variable, identity_element
 from tinygrad.spec import tensor_uop_spec, type_verify
 from tinygrad.device import Device, BufferSpec
 from tinygrad.engine.realize import run_schedule
