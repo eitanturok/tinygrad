@@ -188,14 +188,17 @@ class Tensor(MathTrait):
     if callable(fxn_or_op): return Tensor(new_uop:=fxn_or_op(*[t.lazydata for t in (self,)+x], **kwargs), device=new_uop.device, requires_grad=requires_grad)
     return Tensor(self.lazydata.alu(fxn_or_op, *[t.lazydata for t in x], **kwargs), device=self.device, requires_grad=requires_grad)
 
-  def _apply_broadcasted_uop(self, fxn:Callable, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  def _apply_broadcasted_uop(self, fxn_or_op:Callable|Ops, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
     lhs,rhs = self._broadcasted(x, reverse)
-    return lhs._apply_uop(fxn, rhs)
+    return lhs._apply_uop(fxn_or_op, rhs)
 
   def alu(self, op:Ops, *src:Tensor) -> Tensor:
     # cast dtype based on Op
     if op in {Ops.RECIP, Ops.SQRT, Ops.SIN, Ops.LOG2, Ops.EXP2}: return self.cast(least_upper_float(self.dtype))._apply_uop(op)
+    elif op in {Ops.ADD, Ops.MUL}: return self._apply_broadcasted_uop(op, *src)
     return self._apply_uop(op, *src)
+
+  def const_like(self, b): return self._broadcasted(b)[1]
 
   def requires_grad_(self, requires_grad=True) -> Tensor:
     self.requires_grad = requires_grad
@@ -3037,25 +3040,25 @@ class Tensor(MathTrait):
     # broadcast
     return x._broadcast_to(out_shape:=_broadcast_shape(x.shape, y.shape)), y._broadcast_to(out_shape)
 
-  def add(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
-    """
-    Adds `self` and `x`.
-    Equivalent to `self + x`.
-    Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
+  # def add(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  #   """
+  #   Adds `self` and `x`.
+  #   Equivalent to `self + x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    t = Tensor.randn(4)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.add(20).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.add(Tensor([[2.0], [3.5]])).numpy())
-    ```
-    """
-    return self._apply_broadcasted_uop(UOp.add, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   t = Tensor.randn(4)
+  #   print(t.numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.add(20).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.add(Tensor([[2.0], [3.5]])).numpy())
+  #   ```
+  #   """
+  #   return self._apply_broadcasted_uop(UOp.add, x, reverse)
 
   def sub(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
     """
