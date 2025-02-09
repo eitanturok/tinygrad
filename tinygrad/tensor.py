@@ -195,6 +195,16 @@ class Tensor(MathTrait):
   def alu(self, op:Ops, *src:Tensor) -> Tensor:
     # cast dtype based on Op
     if op in {Ops.RECIP, Ops.SQRT, Ops.SIN, Ops.LOG2, Ops.EXP2}: return self.cast(least_upper_float(self.dtype))._apply_uop(op)
+    elif op in {Ops.XOR, Ops.AND, Ops.OR}:
+      if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
+      return self._apply_broadcasted_uop(op, *src)
+    elif op in {Ops.SHL, Ops.SHR}:
+
+      # TODO: check that any([s>=0 for s in src])
+      x = [Tensor.all(s>=0).tolist() for s in src]
+      print(f'{x=}')
+      assert dtypes.is_unsigned(self.dtype) and all([dtypes.is_int(s.dtype) and Tensor.all(s>=0) for s in src]), f"{op} not supported {self.dtype=} {src=}"
+      return self._apply_broadcasted_uop(op, *src)
     elif op in {Ops.ADD, Ops.MUL}: return self._apply_broadcasted_uop(op, *src)
     return self._apply_uop(op, *src)
 
@@ -3060,26 +3070,26 @@ class Tensor(MathTrait):
   #   """
   #   return self._apply_broadcasted_uop(UOp.add, x, reverse)
 
-  def sub(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
-    """
-    Subtracts `x` from `self`.
-    Equivalent to `self - x`.
-    Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
+  # def sub(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  #   """
+  #   Subtracts `x` from `self`.
+  #   Equivalent to `self - x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    t = Tensor.randn(4)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.sub(20).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.sub(Tensor([[2.0], [3.5]])).numpy())
-    ```
-    """
-    a, b = self._broadcasted(x, reverse)
-    return a + (-b)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   t = Tensor.randn(4)
+  #   print(t.numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.sub(20).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.sub(Tensor([[2.0], [3.5]])).numpy())
+  #   ```
+  #   """
+  #   a, b = self._broadcasted(x, reverse)
+  #   return a + (-b)
 
   def mul(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
     """
@@ -3114,27 +3124,27 @@ class Tensor(MathTrait):
     """
     return self._apply_broadcasted_uop(UOp.idiv, x, reverse)
 
-  def div(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
-    """
-    Divides `self` by `x`.
-    Equivalent to `self / x`.
-    Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
-    `div` performs true division.
+  # def div(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  #   """
+  #   Divides `self` by `x`.
+  #   Equivalent to `self / x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
+  #   `div` performs true division.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    t = Tensor.randn(4)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.div(3).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1, 4, 10]).div(Tensor([2, 3, 4])).numpy())
-    ```
-    """
-    numerator, denominator = self._broadcasted(x, reverse)
-    return numerator.cast(least_upper_float(numerator.dtype)) * denominator.cast(least_upper_float(denominator.dtype)).reciprocal()
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   t = Tensor.randn(4)
+  #   print(t.numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.div(3).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([1, 4, 10]).div(Tensor([2, 3, 4])).numpy())
+  #   ```
+  #   """
+  #   numerator, denominator = self._broadcasted(x, reverse)
+  #   return numerator.cast(least_upper_float(numerator.dtype)) * denominator.cast(least_upper_float(denominator.dtype)).reciprocal()
 
   def mod(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
     """
@@ -3149,51 +3159,51 @@ class Tensor(MathTrait):
     a, b = self._broadcasted(x, reverse)
     return (r := a._apply_uop(UOp.mod, b)) + b * (((r < 0) & (b > 0)) | ((r > 0) & (b < 0)))
 
-  def xor(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
-    """
-    Computes bitwise xor of `self` and `x`.
-    Equivalent to `self ^ x`.
-    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
+  # def xor(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  #   """
+  #   Computes bitwise xor of `self` and `x`.
+  #   Equivalent to `self ^ x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([-1, -2, 3]).xor(Tensor([1, 0, 3])).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([True, True, False, False]).xor(Tensor([True, False, True, False])).numpy())
-    ```
-    """
-    if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
-    return self._apply_broadcasted_uop(UOp.xor, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([-1, -2, 3]).xor(Tensor([1, 0, 3])).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([True, True, False, False]).xor(Tensor([True, False, True, False])).numpy())
+  #   ```
+  #   """
+  #   if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
+  #   return self._apply_broadcasted_uop(UOp.xor, x, reverse)
 
-  def bitwise_and(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
-    """
-    Compute the bit-wise AND of `self` and `x`.
-    Equivalent to `self & x`.
-    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([2, 5, 255]).bitwise_and(Tensor([3, 14, 16])).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([True, True, False, False]).bitwise_and(Tensor([True, False, True, False])).numpy())
-    ```
-    """
-    if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
-    return self._apply_broadcasted_uop(UOp.bitwise_and, x, reverse)
+  # def bitwise_and(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  #   """
+  #   Compute the bit-wise AND of `self` and `x`.
+  #   Equivalent to `self & x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([2, 5, 255]).bitwise_and(Tensor([3, 14, 16])).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([True, True, False, False]).bitwise_and(Tensor([True, False, True, False])).numpy())
+  #   ```
+  #   """
+  #   if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
+  #   return self._apply_broadcasted_uop(UOp.bitwise_and, x, reverse)
 
-  def bitwise_or(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
-    """
-    Compute the bit-wise OR of `self` and `x`.
-    Equivalent to `self | x`.
-    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([2, 5, 255]).bitwise_or(Tensor([4, 4, 4])).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([True, True, False, False]).bitwise_or(Tensor([True, False, True, False])).numpy())
-    ```
-    """
-    if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
-    return self._apply_broadcasted_uop(UOp.bitwise_or, x, reverse)
+  # def bitwise_or(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
+  #   """
+  #   Compute the bit-wise OR of `self` and `x`.
+  #   Equivalent to `self | x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([2, 5, 255]).bitwise_or(Tensor([4, 4, 4])).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([True, True, False, False]).bitwise_or(Tensor([True, False, True, False])).numpy())
+  #   ```
+  #   """
+  #   if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
+  #   return self._apply_broadcasted_uop(UOp.bitwise_or, x, reverse)
 
   def bitwise_not(self) -> Tensor:
     """
@@ -3209,29 +3219,29 @@ class Tensor(MathTrait):
     if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
     return self.logical_not() if self.dtype == dtypes.bool else self ^ -1
 
-  def lshift(self, x:int, reverse=False):
-    """
-    Computes left arithmetic shift of `self` by `x` bits. `self` must have unsigned dtype.
-    Equivalent to `self << x`.
+  # def lshift(self, x:int, reverse=False):
+  #   """
+  #   Computes left arithmetic shift of `self` by `x` bits. `self` must have unsigned dtype.
+  #   Equivalent to `self << x`.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1, 3, 31], dtype=dtypes.uint8).lshift(2).numpy())
-    ```
-    """
-    assert dtypes.is_unsigned(self.dtype) and isinstance(x, int) and x >= 0, f"not supported {self.dtype=} {x=}"
-    return self.mul(2 ** x) # return self._apply_broadcasted_uop(UOp.lshift, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([1, 3, 31], dtype=dtypes.uint8).lshift(2).numpy())
+  #   ```
+  #   """
+  #   assert dtypes.is_unsigned(self.dtype) and isinstance(x, int) and x >= 0, f"not supported {self.dtype=} {x=}"
+  #   return self.mul(2 ** x) # return self._apply_broadcasted_uop(UOp.lshift, x, reverse)
 
-  def rshift(self, x:int, reverse=False):
-    """
-    Computes right arithmetic shift of `self` by `x` bits. `self` must have unsigned dtype.
-    Equivalent to `self >> x`.
+  # def rshift(self, x:int, reverse=False):
+  #   """
+  #   Computes right arithmetic shift of `self` by `x` bits. `self` must have unsigned dtype.
+  #   Equivalent to `self >> x`.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([4, 13, 125], dtype=dtypes.uint8).rshift(2).numpy())
-    ```
-    """
-    assert dtypes.is_unsigned(self.dtype) and isinstance(x, int) and x >= 0, f"not supported {self.dtype=} {x=}"
-    return self.idiv(2 ** x) # return self._apply_broadcasted_uop(UOp.rshift, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([4, 13, 125], dtype=dtypes.uint8).rshift(2).numpy())
+  #   ```
+  #   """
+  #   assert dtypes.is_unsigned(self.dtype) and isinstance(x, int) and x >= 0, f"not supported {self.dtype=} {x=}"
+  #   return self.idiv(2 ** x) # return self._apply_broadcasted_uop(UOp.rshift, x, reverse)
 
   def pow(self, x:Union[Tensor, ConstType], reverse=False) -> Tensor:
     """
