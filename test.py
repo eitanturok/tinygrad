@@ -1,18 +1,19 @@
 import unittest
 from tinygrad import Tensor, dtypes
+# from tinygrad.helpers import Context, getenv, DEVECTORIZE
 from tinygrad.ops import UOp, Ops
 from tinygrad.codegen.rewriter import full_graph_rewrite
 from icecream import install, ic
 install()
 
-t2 = Tensor([3, 4, 5, 6, 7]).log2()
-print(t2.tolist())
+t1 = Tensor([3, 4, 5, 6, 7]).log2()
+print(f'{t1.tolist()=}')
 
-t1 = Tensor([3, 4, 5, 6, 7]).sum()
-print(t1.tolist())
+t2 = Tensor([3, 4, 5, 6, 7]).sum()
+print(f'{t2.tolist()=}')
 
-t1 = Tensor([3, 4, 5, 6, 7]).reciprocal()
-print(t1.tolist())
+t3 = Tensor([3, 4, 5, 6, 7]).reciprocal()
+print(f'{t3.tolist()=}')
 
 
 
@@ -96,3 +97,14 @@ class TestVectorizedLog2(unittest.TestCase):
 # sink = vec_log.sink()
 # opt_sink = full_graph_rewrite(sink)
 # ic(sink, opt_sink)
+
+
+# with Context(DEVECTORIZE=0):
+#   print(getenv("DEVECTORIZE"))
+#   t1 = Tensor([3, 4, 5, 6, 7]).log2()
+#   print(t1.tolist())
+
+# with Context(DEVECTORIZE=1):
+#   print(getenv("DEVECTORIZE"))
+#   t2 = Tensor([3, 4, 5, 6, 7]).log2()
+#   print(t2.tolist())

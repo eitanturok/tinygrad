@@ -288,3 +288,76 @@ to
 ?
 
 This seems to simple.... What fails if I do this? Is the correctness off?
+
+JK. I lost that change...
+
+I still think I have to go to pm_lowerer in `lowerer.py`
+
+Let's go back to the rule
+```py
+(UPat((Ops.LOAD, Ops.STORE), src=(UPat(), UPat(Ops.VIEW)), allow_any_len=True, name="x"), lower_load_store),
+```
+where is defined as
+```py
+def lower_load_store(ctx: IndexContext, x: UOp):
+```
+
+The ctx is already different between the two ops.
+ops.log2 ctx
+```py
+IndexContext(idxs=[UOp(Ops.SPECIAL, dtypes.int, arg=('gidx0', 2), src=()), UOp(Ops.SPECIAL, dtypes.int, arg=('lidx0', 3), src=())], ridxs=[UOp(Ops.SPECIAL, dtypes.int, arg=('gidx0', 2), src=()), UOp(Ops.SPECIAL, dtypes.int, arg=('lidx0', 3), src=())], acc_num=0)
+```
+and ops.add ctx
+```py
+IndexContext(idxs=[UOp(Ops.UNROLL, dtypes.int, arg=((0, 6),), src=(
+  UOp(Ops.VCONST, dtypes.int.vec(6), arg=(0, 1, 2, 3, 4, 5), src=()),))], ridxs=[UOp(Ops.UNROLL, dtypes.int, arg=((0, 6),), src=(
+  UOp(Ops.VCONST, dtypes.int.vec(6), arg=(0, 1, 2, 3, 4, 5), src=()),))], acc_num=0)
+```
+Notice that ops.add's ctx has VCONST's already.
+
+Where does this ctx come from?
+
+It comes from `lowerer.py` where
+```py
+graph_rewrite(ast, pm_lowerer, ctx=get_index(ast, opts))
+```
+so really the difference comes from the get_index function.
+
+Or it comes from the inputs to graph_rewrite higher up the stack in `kernel.py` where we have:
+* `self.get_optimized_ast()`
+* `self.opts()`
+
+`self.opts` are optimizations that are specific to the renderer and have things like have_locals, have_tc, etc. Not relevant for us.
+
+Where does the vconst come from in ops.add ctx?
+Well we create vconst in ops.py's `const` function
+```py
+def const(dtype:DType, b:ConstLike):
+    if isinstance(b, UOp): return b.unbind()[0] if b.op is Ops.BIND else b
+    if isinstance(b, tuple) and all_same(b): b = b[0]  # doesn't have to be a VCONST if they are all the same
+    return UOp(Ops.VCONST if isinstance(b, tuple) else Ops.CONST, dtype, arg=dtypes.as_const(b, dtype))
+```
+but this is really from the `get_index` function. Let's look at the different values in this function:
+
+ops.log2: `first_upcasted=1`
+ops.add: `first_upcasted=0`
+ops.reciprical: `first_upcasted=1`
+
+If we set `first_upcasted=0` for ops.log2 and ops.reciprical, then things are vectorized!
+
+What is first_upcasted? This is a property of `kernel` where the comment explains it is
+```py
+  upcasted: int = 0             # count that are upcasted     (this is remapping RANGE to UNROLL)
+```
+The key part is mapping range to unroll. We want to have an unroll? Or we don't want an unroll..?
+
+Can this part of `ops.py` be relevant:
+```py
+def exec_alu(op:Ops, dtype:DType, operands, truncate_output=True):
+  if dtype.count > 1:
+    return tuple([exec_alu(op, dtype.scalar(), [x[i] if isinstance(x, tuple) else x for x in operands]) for i in range(dtype.count)])
+  alu = python_alu[op](*operands)
+  return truncate.get(dtype, lambda x: x)(alu) if truncate_output else alu
+```
+Doesn't seem like it...
+

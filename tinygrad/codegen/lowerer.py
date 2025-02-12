@@ -51,7 +51,8 @@ def get_index(ast:UOp, opts:Renderer) -> IndexContext:
   ki = ast.arg if isinstance(ast.arg, KernelInfo) else KernelInfo()
   # NOTE: assumes the shape is <global dims> <local dims> <group_for_reduces> <reduces> <upcasts/unrolls>
   full_shape = ast.full_shape
-  first_upcasted = len(full_shape)-ki.upcasted
+  # first_upcasted = len(full_shape)-ki.upcasted
+  first_upcasted = 0
   # if there's no reduce, this is first_upcasted. assumes reduces are at the end
   first_reduce = min([first_upcasted]+flatten(x.axis_arg for x in ast.toposort if x.op is Ops.REDUCE_AXIS))
   local_loads = [x for x in ast.toposort if x.op is Ops.LOAD and x.src[0].op is Ops.DEFINE_LOCAL]
