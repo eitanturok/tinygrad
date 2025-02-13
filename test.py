@@ -12,8 +12,8 @@ print(f'{t1.tolist()=}')
 t2 = Tensor([3, 4, 5, 6, 7]).sum()
 print(f'{t2.tolist()=}')
 
-t3 = Tensor([3, 4, 5, 6, 7]).reciprocal()
-print(f'{t3.tolist()=}')
+# t3 = Tensor([3, 4, 5, 6, 7]).reciprocal()
+# print(f'{t3.tolist()=}')
 
 
 

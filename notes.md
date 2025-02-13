@@ -361,3 +361,21 @@ def exec_alu(op:Ops, dtype:DType, operands, truncate_output=True):
 ```
 Doesn't seem like it...
 
+
+`first_upcasted=0` causes `first_reduce=0` which is really what we want. Otherwise, `first_reduce=1` for ops.log2 if we do not explcitly set it.
+
+
+ops.log2: `group_for_reduces=0`, `ki.dont_use_locals=True`,
+`idxs=[UOp(Ops.SPECIAL, dtypes.int, arg=('gidx0', 5), src=())]`,
+`idxs=[UOp(Ops.SPECIAL, dtypes.int, arg=('gidx0', 5), src=())]`,
+ops.add: `group_for_reduces=0`, `ki.dont_use_locals=True`,
+`idxs=[]`
+`[UOp(Ops.RANGE, dtypes.int, arg=0, src=(
+  UOp(Ops.CONST, dtypes.int, arg=0, src=()),
+...p(Ops.CONST, dtypes.int, arg=5, src=()),))]`
+ops.reciprical: `group_for_reduces=0`
+
+
+we have reduce_loops with ops.add but not with ops.log2 in lowerer.py
+
+The differnce is in the first_reduce!
