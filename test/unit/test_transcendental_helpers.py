@@ -63,5 +63,17 @@ class TestTranscendentalFunctions(unittest.TestCase):
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -10), dtypes.float)), 2**-10)
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -63), dtypes.float)), 2**-63)
 
+class TestTranscendentalFunctionsVectorized(unittest.TestCase):
+  def test_rintk_vectorized(self):
+    out = rintk(UOp.const(dtypes.float.vec(4), (0.0,5.0,5.5,-5.5)))
+    self.assertEqual(out.dtype, dtypes.int.vec(4))
+    np.testing.assert_allclose(eval_uop(out), (0,5,6,-6))
+
+  def test_pow2if_vectorized(self):
+    out = pow2if(UOp.const(dtypes.int.vec(4), (-2,0,2,10)),  dtypes.float)
+    ic(out)
+    self.assertEqual(out.dtype, dtypes.float.vec(4))
+    np.testing.assert_allclose(eval_uop(out), (0.25,1.0,4.0,1024.0))
+
 if __name__ == '__main__':
   unittest.main()

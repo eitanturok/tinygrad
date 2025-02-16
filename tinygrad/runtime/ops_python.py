@@ -27,10 +27,12 @@ def _store(m, i, v):
 class PythonProgram:
   def __init__(self, name:str, lib:bytes):
     self.uops: list[tuple[Ops, Optional[DType], list[int], Any]] = pickle.loads(lib)
+    ic(self.uops)
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False):
     st = time.perf_counter()
     warp = list(itertools.product(*[range(x) for x in local_size[::-1]]))
     warp_size = len(warp)
+    ic(warp_size)
     for idxs in itertools.product(*[range(x) for x in global_size[::-1]]):
       ul: dict[int, Any] = {}
       dl: dict[int, DType] = {}
@@ -40,15 +42,18 @@ class PythonProgram:
       loop_ends: dict[int, int] = {}
       while i < len(self.uops):
         uop, dtype, idp, arg = self.uops[i]
+        ic(uop, dtype, idp, arg)
         void_ops = {Ops.STORE, Ops.ENDRANGE, Ops.BARRIER, Ops.IF, Ops.ENDIF}
         if uop is Ops.DEFINE_ACC: idp = [idp[0]]
         inp = [ul[v] for v in idp if self.uops[v][0] not in void_ops]
         dtp = [dl[v] for v in idp if self.uops[v][0] not in void_ops]
+        ic(inp, dtp)
         if getenv("TRACE"): print(i, uop, dtype, arg, inp, dtp)
         if uop is Ops.STORE:
           if len(inp) == 2: inp.append([True] * len(inp[0]))  # set the gate to True
           if dtp[1].count > 1:
-            for j,val in enumerate(inp[1]):
+            ic(inp[0], inp[1], inp[2])
+            for j,val in enumerate([[x] for x in inp[1]]):
               for (m,o),v,g in zip(inp[0], val, inp[2]):
                 if g: _store(m, o+j, v)
           else:
@@ -101,9 +106,11 @@ class PythonProgram:
               continue
         elif uop is Ops.VECTORIZE: ul[i] = inp
         elif uop in {Ops.CAST, Ops.BITCAST}:
-          assert dtp[0].fmt and dtype.fmt
-          pack_format, unpack_format = str(warp_size) + dtp[0].fmt, str(warp_size) + dtype.fmt
-          if uop is Ops.BITCAST: ul[i] = list(struct.unpack(unpack_format, struct.pack(pack_format, *inp[0])))
+          ic(dtp[0], dtype.fmt, inp[0])
+          assert dtp[0].scalar().fmt and dtype.scalar().fmt
+          pack_format, unpack_format = str(warp_size*dtp[0].vcount) + dtp[0].scalar().fmt, str(warp_size*dtype.vcount) + dtype.scalar().fmt
+          ic(pack_format, unpack_format)
+          if uop is Ops.BITCAST: ul[i] = list(struct.unpack(unpack_format, struct.pack(pack_format, *flatten(inp[0]))))
           else: ul[i] = [truncate.get(dtype, lambda dt: dt)(dtypes.as_const(x, dtype)) for x in inp[0]]
         elif uop is Ops.LOAD:
           if dtype.count > 1:

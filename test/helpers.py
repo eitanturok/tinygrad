@@ -52,10 +52,11 @@ def timeit(fxn:Callable[..., T], *args, **kwargs) -> tuple[T, float]:
   ret = fxn(*args, **kwargs)
   return ret, (time.perf_counter_ns()-st)*1e-6
 
-def eval_uop(uop:UOp):
-  g = UOp(Ops.DEFINE_GLOBAL, uop.dtype.ptr(), arg=0, src=())
-  rw = full_graph_rewrite(UOp.store(g.index(UOp.const(dtypes.int, 0)), uop).sink(), PythonRenderer)
+def eval_uop(uop: UOp):
+  g = UOp(Ops.DEFINE_GLOBAL, uop.dtype.scalar().ptr(), arg=0, src=())
+  store_op = UOp.store(g.index(UOp.const(dtypes.int, 0)), uop)
+  rw = full_graph_rewrite(store_op.sink(), PythonRenderer)
   prog = PythonProgram("run", PythonCompiler().compile(PythonRenderer().render("run", linearize_uop(rw))))
-  buf = PythonAllocator().alloc(uop.dtype.itemsize)
-  prog(buf)
-  return buf.cast(uop.dtype.fmt).tolist()[0]
+  prog(buf:=PythonAllocator().alloc(uop.dtype.itemsize))
+  ret = buf.cast(uop.dtype.scalar().fmt).tolist()
+  return ret[0] if len(ret) == 1 else ret
