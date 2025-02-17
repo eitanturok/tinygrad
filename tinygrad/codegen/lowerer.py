@@ -3,7 +3,7 @@ import functools, itertools, operator
 from dataclasses import dataclass
 from typing import cast
 from tinygrad.dtype import dtypes, PtrDType
-from tinygrad.ops import KernelInfo, UOp, Ops, graph_rewrite, PatternMatcher, UPat, sint, identity_element, sint_to_uop
+from tinygrad.ops import KernelInfo, UOp, Ops, GroupOp, graph_rewrite, PatternMatcher, UPat, sint, identity_element, sint_to_uop
 from tinygrad.renderer import Renderer
 from tinygrad.helpers import all_int, prod, partition, flatten, unwrap
 
@@ -126,7 +126,19 @@ def lower_const(x:UOp):
   assert all(v.mask is None for v in unwrap(x.st).views), f"VIEW in CONST/DEFINE_VAR source must be unmasked, got {x.st}"
   return x.replace(src=())
 
+def replace_cat(x: UOp):
+  ic(x)
+  load1, load2 = x.src[0], x.src[1]
+  ic(load1, load2)
+  # view1, view2 = load1.src[0], load2.src[0]
+  return None
+
+
 pm_lowerer = PatternMatcher([
+  (UPat(GroupOp.ALU,
+        src=(UPat(Ops.LOAD), UPat(Ops.LOAD)),
+        #src=(UPat(Ops.LOAD, src=(UPat(Ops.VIEW))), UPat(Ops.LOAD, src=(UPat(Ops.VIEW)))),
+        name="x"), replace_cat),
   (UPat(Ops.REDUCE_AXIS, name="x"), lower_reduce_axis),
   (UPat((Ops.CONST, Ops.DEFINE_VAR), src=(UPat(Ops.VIEW),), name="x"), lower_const),
   (UPat(Ops.VALID, src=(UPat(Ops.VIEW),), name="x"), lambda ctx,x: x.st_arg.to_indexed_uops(ctx.idxs)[1]),
