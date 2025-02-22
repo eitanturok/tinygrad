@@ -399,6 +399,8 @@ class Kernel:
       self.shift_to(axis, amt, top=(opt.op is OptOps.GROUPTOP), insert_before=self.first_reduce + self.group_for_reduces)
       self.group_for_reduces += 1
     elif opt.op is OptOps.UNROLL:                     # purple
+      ic('UNROLLING!')
+      ic(opt.op, axis, amt, self.first_upcast)
       check(axis < self.first_upcast, "can't upcasted already upcasted")
       check(amt <= 32, "don't unroll more than 32")
       # TODO: fix upcast_count to put purples before yellows. broken because of METAL tensor cores
@@ -409,6 +411,7 @@ class Kernel:
       self.shift_to(axis, amt, insert_before=None)
       self.upcast()
     elif opt.op is OptOps.UPCAST:                     # yellow
+      ic(opt.op, axis, amt, self.first_upcast, self.first_reduce)
       check(axis < self.first_reduce, "upcast is for non-reduce")
       check(not (self.tensor_core and self.global_dims <= axis < self.global_dims+len(self.tensor_core.get_local_axes())), "can't upcast TC locals")
       check((self.opts is not None and self.opts.device == "DSP") or amt <= 16, "don't upcast more than 16")
@@ -446,7 +449,8 @@ class Kernel:
     if isinstance(self.membufs[0].dtype, ImageDType):
       unit_stride_axes_mul_4 = [i for i in self.sts[0].unit_stride_axes(ignore_valid=True) if self.sts[0].shape[i]%4 == 0]
       assert unit_stride_axes_mul_4, f"needs a unit stride axis in {self.bufs[0]}"
-      if all(x < self.first_upcast for x in unit_stride_axes_mul_4): self.apply_opt(Opt(OptOps.UPCAST, unit_stride_axes_mul_4[0], 4))
+      if ic(all(x < self.first_upcast for x in unit_stride_axes_mul_4)):
+        self.apply_opt(Opt(OptOps.UPCAST, unit_stride_axes_mul_4[0], 4))
     return self
 
   def hand_coded_optimizations(self) -> Kernel:
@@ -467,7 +471,7 @@ class Kernel:
               print(f"MATVEC: {self.full_shape=} {self.first_reduce=} {strides0=} {MV_BLOCKSIZE=} {MV_THREADS_PER_ROW=} {MV_ROWS_PER_THREAD=}")
             if MV_THREADS_PER_ROW > 1: self.apply_opt(Opt(OptOps.GROUP, 0, MV_THREADS_PER_ROW))
             if MV_BLOCKSIZE > 1: self.apply_opt(Opt(OptOps.LOCAL, global_idx, MV_BLOCKSIZE))
-            if MV_ROWS_PER_THREAD > 1: self.apply_opt(Opt(OptOps.UPCAST, global_idx, MV_ROWS_PER_THREAD))
+            if ic(MV_ROWS_PER_THREAD) > 1: self.apply_opt(Opt(OptOps.UPCAST, global_idx, MV_ROWS_PER_THREAD))
             return self
 
     if self.opts.has_local and self.opts.has_shared and all_int(self.sts[0].shape[:self.first_reduce]):
@@ -530,6 +534,10 @@ class Kernel:
 
     # if last dim is small(ish) and it's a reduce dim, upcast the reduce (loop unrolling). no simplify needed since it's just an upcast.
     if self.first_reduce < self.first_upcast and (prod(self.full_shape[self.first_upcast:]) <= 4 or not any(r for _,_,r in self.upcasted_axis(self.full_buf_index))) and (self.upcasted == 0 or prod(self.full_shape[-self.upcasted:]) < 64):  # noqa: E501
+      # ic('BEFORE')
+      # ic(len(self.bufs), self.bufs)
+      # ic(self.full_shape, self.upcasted, self.full_unupcasted_shape)
+      # ic(self.first_reduce, self.first_upcast, self.full_buf_index)
       if isinstance(s:=self.full_unupcasted_shape[-1], int) and s <= 32:  # NOTE: cannot loop unroll symbolic axis
         self.apply_opt(Opt(OptOps.UNROLL, len(self.full_unupcasted_shape)-1-self.first_reduce, 0))
         # if it's small, upcast a second reduce dimension too
@@ -540,6 +548,10 @@ class Kernel:
           if self.full_unupcasted_shape[-1]%splits == 0:
             self.apply_opt(Opt(OptOps.UNROLL, len(self.full_unupcasted_shape)-1-self.first_reduce, splits))
             break
+      # ic('AFTER!')
+      # ic(len(self.bufs), self.bufs)
+      # ic(self.full_shape, self.upcasted, self.full_unupcasted_shape)
+      # ic(self.first_reduce, self.first_upcast, self.full_buf_index)
 
     # if nothing at all is upcasted and it's easy to, do an upcast
     # TODO: this is breaking the tests

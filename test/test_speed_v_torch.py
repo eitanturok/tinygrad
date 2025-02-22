@@ -146,6 +146,10 @@ class TestSpeed(unittest.TestCase):
     helper_test_generic_square('sum', 2048, f, f, onearg=True)
     helper_test_generic_square('sum', 4096, f, f, onearg=True)
 
+  def test_sum_small(self):
+    a = Tensor(np.random.default_rng().random((4096, 4096), dtype=np.float32)).realize()
+    a.sum().realize()
+
   def test_partial_sum(self):
     R = 256
     def f(a, b): return a.reshape(int(4096//R), int(4096*R)).sum(axis=1)
