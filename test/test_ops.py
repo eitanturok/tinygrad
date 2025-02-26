@@ -8,6 +8,10 @@ from tinygrad import Tensor, Device, dtypes
 from tinygrad.tensor import _to_np_dtype
 from tinygrad.device import is_dtype_supported
 
+if getenv("TINY_BACKEND"):
+  import extra.torch_backend.backend # noqa: F401 # pylint: disable=unused-import
+  torch.set_default_device("tiny")
+
 if CI:
   warnings.filterwarnings("ignore", message="Non-empty compiler output encountered")
 
@@ -46,8 +50,8 @@ def helper_test_op(shps, torch_fxn, tinygrad_fxn=None, atol=1e-6, rtol=1e-3, gra
   if DEBUG >= 6:
     np.set_printoptions(linewidth=200, suppress=True)
     print(ret.numpy())
-    print(out.detach().numpy())
-  compare("forward pass", ret.numpy(), out.detach().numpy(), atol=atol, rtol=rtol)
+    print(out.detach().cpu().numpy())
+  compare("forward pass", ret.numpy(), out.detach().cpu().numpy(), atol=atol, rtol=rtol)
 
   torch_fbp, tinygrad_fbp = np.nan, np.nan
   if not forward_only and not FORWARD_ONLY:
@@ -65,7 +69,7 @@ def helper_test_op(shps, torch_fxn, tinygrad_fxn=None, atol=1e-6, rtol=1e-3, gra
     tinygrad_fbp = time.monotonic() - st
 
     for i, (t, tt_grad) in enumerate(zip(ts, tst_grads)):
-      compare(f"backward pass tensor {i}", tt_grad.numpy(), t.grad.detach().numpy(), atol=grad_atol, rtol=grad_rtol)
+      compare(f"backward pass tensor {i}", tt_grad.numpy(), t.grad.detach().cpu().numpy(), atol=grad_atol, rtol=grad_rtol)
 
     """
     (ret+1).square().mean().backward()
@@ -90,7 +94,7 @@ def prepare_test_op(low, high, shps, vals, forward_only=False):
   for i in range(len(ts)):
     # NOTE: torch default int64 for python ints input
     if ts[i].dtype == torch.int64: ts[i] = ts[i].type(torch.int32)
-  tst = [Tensor(x.detach().numpy(), requires_grad=(not forward_only and not FORWARD_ONLY)) for x in ts]
+  tst = [Tensor(x.detach().cpu().numpy(), requires_grad=(not forward_only and not FORWARD_ONLY)) for x in ts]
   return ts, tst
 
 class TestOps(unittest.TestCase):
@@ -625,11 +629,28 @@ class TestOps(unittest.TestCase):
     helper_test_op(None, lambda x: 0**x, vals=[[-2.,-1,0,1,2,3]])
     helper_test_op(None, lambda x: (-2)**x, vals=[[-2.,-1,0,1,2,3]])
 
+  def test_pow_const_direct(self):
+    # x ** c
+    def get_tiny_gradient(x, c):
+      t = Tensor([x], dtype=dtypes.float)
+      return (t ** c)[0].gradient(t)[0].item()
+    def get_torch_gradient(x, c):
+      t = torch.tensor([x], dtype=torch.float, requires_grad=True)
+      return torch.autograd.grad(t ** c, t)[0].item()
+    for x in [-math.inf, 0, 1, math.inf]:
+      for c in [-1, 0, 0.3, 1, 2]:
+        tiny_out = get_tiny_gradient(x, c)
+        torch_out = get_torch_gradient(x, c)
+        if math.isnan(tiny_out):
+          assert math.isnan(torch_out)
+        else:
+          self.assertAlmostEqual(tiny_out, torch_out, msg=f"{x}, {c}")
+
   def test_pow_zero_tensor(self):
-    helper_test_op(None, lambda x,y: x**y, vals=[[0.0], [0.3]])
     helper_test_op(None, lambda x,y: x**y, vals=[[0.0], [0.0]])
     # TODO: fix WEBGPU
     if Device.DEFAULT != "WEBGPU":
+      helper_test_op(None, lambda x,y: x**y, vals=[[0.0], [0.3]])
       helper_test_op(None, lambda x,y: x**y, vals=[[0.0], [-0.3]])
   def test_pow_zero_const(self):
     helper_test_op(None, lambda x: x**0.3, vals=[[0.0]])
@@ -1270,18 +1291,22 @@ class TestOps(unittest.TestCase):
 
   def test_isclose(self):
     helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x), forward_only=True)
+    helper_test_op([(3, 4, 5, 6), (3, 4, 5, 6)], lambda x,y: x.isclose(y), forward_only=True)
     helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x, equal_nan=True), forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x + 1e-6), vals=[[1.0, 2.0, 3.0]], forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x + 0.1), vals=[[1.0, 2.0, 3.0]], forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x + 0.1, rtol=0.2, atol=0.0), vals=[[1.0, 2.0, 3.0]], forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x + 1e-9), vals=[[0.0, 0.0, 0.0]], forward_only=True)
-    helper_test_op([(2, 3, 4)], lambda x: x.isclose(x + 1e-6), forward_only=True)
+    helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x + 1e-6), forward_only=True)
+    helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x + 1e-9), forward_only=True)
+    helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x + 1e-6, atol=0.0), forward_only=True)
+    helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x + 1e-9, atol=0.0), forward_only=True)
+    helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x + 1e-6, rtol=0.01), forward_only=True)
+    helper_test_op([(3, 4, 5, 6)], lambda x: x.isclose(x + 1e-9, rtol=0.01), forward_only=True)
+    helper_test_op(None, lambda x,y: x.isclose(y), vals=[[1e-7, 1e-8, 1e-9], [0.0, 0.0, 0.0]], forward_only=True)
 
+  @unittest.skipIf(Device.DEFAULT == "WEBGPU" and CI, "isinf check of 'nan' fails on CI software-based vulkan")
   def test_isclose_edge_cases(self):
-    helper_test_op(None, lambda x: x.isclose(x), vals=[[float("inf"), float("-inf"), 1.0]], forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x, equal_nan=True), vals=[[float("inf"), float("-inf"), 1.0]], forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x), vals=[[float("nan"), 1.0]], forward_only=True)
-    helper_test_op(None, lambda x: x.isclose(x, equal_nan=True), vals=[[float("nan"), 1.0]], forward_only=True)
+    for a in [math.inf, -math.inf, math.nan, 0.0]:
+      for b in [math.inf, -math.inf, math.nan, 0.0]:
+        helper_test_op(None, lambda x,y: x.isclose(y), vals=[[a], [b]], forward_only=True)
+        helper_test_op(None, lambda x,y: x.isclose(y, equal_nan=True), vals=[[a], [b]], forward_only=True)
 
   def test_mean(self):
     helper_test_op([(3,4,5,6)], lambda x: x.mean())
