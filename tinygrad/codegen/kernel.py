@@ -399,8 +399,8 @@ class Kernel:
       self.shift_to(axis, amt, top=(opt.op is OptOps.GROUPTOP), insert_before=self.first_reduce + self.group_for_reduces)
       self.group_for_reduces += 1
     elif opt.op is OptOps.UNROLL:                     # purple
-      ic('UNROLLING!')
-      ic(opt.op, axis, amt, self.first_upcast)
+      # ic('UNROLLING!')
+      # ic(opt.op, axis, amt, self.first_upcast)
       check(axis < self.first_upcast, "can't upcasted already upcasted")
       check(amt <= 32, "don't unroll more than 32")
       # TODO: fix upcast_count to put purples before yellows. broken because of METAL tensor cores

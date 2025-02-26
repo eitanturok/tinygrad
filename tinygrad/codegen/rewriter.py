@@ -224,6 +224,22 @@ pm_render = PatternMatcher([
     lambda store: UOp(Ops.STORE, src=store.src[:2]+(UOp(Ops.IF, src=(store.src[2],)),))),
 ])
 
+def _vec_acc_2(x:UOp, acc:UOp):
+  ic(x, acc)
+  return
+def _vec_acc_3(add, acc, load):
+  # only works for vectorized loads
+  if load.dtype.vcount == 1: return None
+  # UOp(Ops.ADD, dtypes.float, src=(UOp(Ops.DEFINE_ACC, dtypes.float.vec(4)), UOp(Ops.LOAD, dtypes.float.vec(4))))
+  ic(add, acc, load)
+  ic(add.replace(src=load))
+  return
+
+vec_acc = PatternMatcher([
+  # (UPat(Ops.ASSIGN, src=(UPat(Ops.DEFINE_ACC, name="acc"), UPat()), name="x"), _vec_acc_2),
+  (UPat(Ops.ADD, src=(UPat(Ops.DEFINE_ACC, name="acc"), UPat(Ops.GEP, src=(UPat(Ops.LOAD, name="load")))), name="add"), _vec_acc_3),
+])
+
 # *** uop graph ***
 
 def full_graph_rewrite(sink:UOp, opts:Optional[Renderer]=None) -> UOp:
@@ -243,5 +259,5 @@ def full_graph_rewrite(sink:UOp, opts:Optional[Renderer]=None) -> UOp:
   if opts is not None and opts.pre_matcher is not None: sink = graph_rewrite(sink, opts.pre_matcher)
 
   # final rules for the renderer (without sym)
-  sink = graph_rewrite(sink, symbolic_simple+get_late_rewrite_patterns(supported_ops, TRANSCENDENTAL>=2)+pm_render+extra_matcher)
+  sink = graph_rewrite(sink, symbolic_simple+vec_acc+get_late_rewrite_patterns(supported_ops, TRANSCENDENTAL>=2)+pm_render+extra_matcher)
   return sink
