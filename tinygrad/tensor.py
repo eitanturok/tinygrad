@@ -2127,7 +2127,7 @@ class Tensor(SimpleMathTrait):
     if not ceil_mode: return pool(self, reg_pads).mean(axis)
     return pool(self, ceil_pads).sum(axis) / pool(self.pad(reg_pads).ones_like(), tuple(cp-rp for cp,rp in zip(ceil_pads, reg_pads))).sum(axis)
 
-  def max_pool2d(self, kernel_size=(2,2), stride=None, dilation=1, padding=0, ceil_mode=False):
+  def max_pool2d(self, kernel_size=(2,2), stride=None, dilation=1, padding=0, ceil_mode=False, return_indices=False):
     """
     Applies max pooling over a tensor.
 
@@ -2160,9 +2160,10 @@ class Tensor(SimpleMathTrait):
     print(t.max_pool2d(padding=1).numpy())
     ```
     """
-    pads = self._resolve_pool_pads(padding, len(k_ := make_tuple(kernel_size, 2)))
+    pads, pool_dims = self._resolve_pool_pads(padding, len(k_ := make_tuple(kernel_size, 2))), tuple(range(-len(k_), 0))
     if ceil_mode: pads = self._apply_ceil_mode(pads, k_, stride if stride is not None else k_, dilation)
-    return self.pad(pads, value=dtypes.min(self.dtype))._pool(k_, stride if stride is not None else k_, dilation).max(tuple(range(-len(k_), 0)))
+    pooled = self.pad(pads, value=dtypes.min(self.dtype))._pool(k_, stride if stride is not None else k_, dilation)
+    return (pooled.max(pool_dims), pooled.argmax(pool_dims)) if return_indices else pooled.max(*pool_dims)
 
   def conv2d(self, weight:Tensor, bias:Optional[Tensor]=None, groups=1, stride=1, dilation=1, padding:int|tuple[int, ...]=0,
              acc_dtype:Optional[DTypeLike]=None) -> Tensor:
