@@ -1961,8 +1961,11 @@ class Tensor(SimpleMathTrait):
     ```
     """
     if axis is None: return self.flatten().argmax(0)
+    # axis = tuple(self._resolve_dim(x) for x in (range(self.ndim) if axis is None else make_tuple(axis, 1)))
+    # ic(axis)
     axis = self._resolve_dim(axis)
     m = self == self.max(axis=axis, keepdim=True)
+    # ic(m, self.shape, type(self.shape))
     idx = m * Tensor.arange(self.shape[axis],0,-1, requires_grad=False, device=self.device).reshape(self.shape[axis], *[1]*(self.ndim-axis-1))
     return (self.shape[axis]-idx.max(axis=axis, keepdim=keepdim)).cast(dtypes.int32)
 
@@ -2163,7 +2166,18 @@ class Tensor(SimpleMathTrait):
     pads, pool_dims = self._resolve_pool_pads(padding, len(k_ := make_tuple(kernel_size, 2))), tuple(range(-len(k_), 0))
     if ceil_mode: pads = self._apply_ceil_mode(pads, k_, stride if stride is not None else k_, dilation)
     pooled = self.pad(pads, value=dtypes.min(self.dtype))._pool(k_, stride if stride is not None else k_, dilation)
-    return (pooled.max(pool_dims), pooled.argmax(pool_dims)) if return_indices else pooled.max(*pool_dims)
+    ic(self.numpy(), pooled.numpy(), pool_dims, pooled.max(pool_dims).numpy())
+    if return_indices:
+      # axis = tuple(self._resolve_dim(x) for x in (range(self.ndim) if pool_dims is None else make_tuple(pool_dims, 1)))
+      t = [pooled.argmax(axis).numpy() for axis in pool_dims]
+      ic(t)
+    return (pooled.max(pool_dims), pooled.argmax(pool_dims)) if return_indices else pooled.max(pool_dims)
+
+    # pads = self._resolve_pool_pads(padding, len(k_ := make_tuple(kernel_size, 2)))
+    # if ceil_mode: pads = self._apply_ceil_mode(pads, k_, stride if stride is not None else k_, dilation)
+    # pool_dims = tuple(range(-len(k_), 0))
+    # return self.pad(pads, value=dtypes.min(self.dtype))._pool(k_, stride if stride is not None else k_, dilation).max(pool_dims)
+
 
   def conv2d(self, weight:Tensor, bias:Optional[Tensor]=None, groups=1, stride=1, dilation=1, padding:int|tuple[int, ...]=0,
              acc_dtype:Optional[DTypeLike]=None) -> Tensor:

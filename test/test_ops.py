@@ -2209,6 +2209,14 @@ class TestOps(unittest.TestCase):
           lambda x: torch.nn.functional.max_pool2d(x, kernel_size=(2,2), stride=stride, dilation=dilation),
           lambda x: Tensor.max_pool2d(x, kernel_size=(2,2), stride=stride, dilation=dilation))
 
+  def test_max_pool2d_return_indices(self):
+    for ksz in [(2,2), (3,3), 2, 3, (3,2), (5,5), (5,1)]:
+      with self.subTest(kernel_size=ksz):
+        helper_test_op([(32,2,110,28)],
+          lambda x: torch.nn.functional.max_pool2d(x, kernel_size=ksz, return_indices=True),
+          lambda x: Tensor.max_pool2d(x, kernel_size=ksz, return_indices=True))
+
+
   @unittest.skipIf( Device.DEFAULT in {"CUDA", "NV"}, "CUDA fails on this")
   def test_max_pool2d_unit_stride(self):
     helper_test_op([(8, 2, 17, 14)],
