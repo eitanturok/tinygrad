@@ -201,9 +201,9 @@ class Tensor(MathTrait):
     elif op in {Ops.SHL, Ops.SHR}:
 
       # TODO: check that any([s>=0 for s in src])
-      x = [Tensor.all(s>=0).tolist() for s in src]
-      print(f'{x=}')
-      assert dtypes.is_unsigned(self.dtype) and all([dtypes.is_int(s.dtype) and Tensor.all(s>=0) for s in src]), f"{op} not supported {self.dtype=} {src=}"
+      # x = [Tensor.all(s>=0).tolist() for s in src]
+      # print(f'{x=}')
+      # assert dtypes.is_unsigned(self.dtype) and all([dtypes.is_int(s.dtype) and Tensor.all(s>=0) for s in src]), f"{op} not supported {self.dtype=} {src=}"
       return self._apply_broadcasted_uop(op, *src)
     elif op in {Ops.ADD, Ops.MUL}: return self._apply_broadcasted_uop(op, *src)
     return self._apply_uop(op, *src)
@@ -3348,7 +3348,7 @@ class Tensor(MathTrait):
   def __gt__(self, x) -> Tensor: return self._apply_broadcasted_uop(UOp.__lt__, x, True)
   def ne(self, x) -> Tensor: return self._apply_broadcasted_uop(UOp.ne, x, False)
 
-  def __eq__(self, x) -> Tensor: return self.eq(x)
+  # def __eq__(self, x) -> Tensor: return self.eq(x)
 
   # ***** functional nn ops *****
 
