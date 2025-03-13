@@ -9,8 +9,6 @@ from tinygrad.helpers import PICKLE_BUFFERS, dedup
 if TYPE_CHECKING:
   from tinygrad.shape.shapetracker import ShapeTracker
   from tinygrad.device import Buffer
-from icecream import ic, install
-install()
 
 # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
 class FastEnum(IntEnum):
@@ -83,18 +81,55 @@ class MathTrait:
   def ufix(self, x): return self.const_like(x) if not isinstance(x, MathTrait) else x
   def _binop(self, op, x, reverse): return self.ufix(x).alu(op, self) if reverse else self.alu(op, self.ufix(x))
 
-  def add(self, x, reverse=False): return self._binop(Ops.ADD, x, reverse)
-  def mul(self, x, reverse=False): return self._binop(Ops.MUL, x, reverse)
-  def bitwise_and(self, x, reverse=False): return self._binop(Ops.AND, x, reverse)
-  def bitwise_or(self, x, reverse=False): return self._binop(Ops.OR, x, reverse)
-  def bitwise_xor(self, x, reverse=False): return self._binop(Ops.XOR, x, reverse)
-  def idiv(self, x, reverse=False): return self._binop(Ops.IDIV, x, reverse)
-  def mod(self, x, reverse=False): return self._binop(Ops.MOD, x, reverse)
-  def sub(self, x, reverse=False): return self.ufix(x).alu(Ops.ADD, -self) if reverse else self.alu(Ops.ADD, self.ufix(-x))
-  def div(self, x, reverse=False): return (self.ufix(x)*self.alu(Ops.RECIP)) if reverse else (self*self.ufix(x).alu(Ops.RECIP))
-  def lshift(self, x, reverse=False): return self._binop(Ops.SHL, x, reverse)
-  def rshift(self, x, reverse=False): return self._binop(Ops.SHR, x, reverse)
-  def cmplt(self, x, reverse=False): return self._binop(Ops.CMPLT, x, reverse)
+  def add(self, x, reverse:bool=False): return self._binop(Ops.ADD, x, reverse)
+  def mul(self, x, reverse:bool=False): return self._binop(Ops.MUL, x, reverse)
+  def bitwise_and(self, x, reverse:bool=False):
+    """
+    Compute the bitwise AND of `self` and `x`.
+    Equivalent to `self & x`.
+    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([2, 5, 255]).bitwise_and(Tensor([3, 14, 16])).numpy())
+    ```
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([True, True, False, False]).bitwise_and(Tensor([True, False, True, False])).numpy())
+    ```
+    """
+    return self._binop(Ops.AND, x, reverse)
+  def bitwise_or(self, x, reverse:bool=False):
+    """
+    Computes bitwise xor of `self` and `x`.
+    Equivalent to `self ^ x`.
+    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([-1, -2, 3]).bitwise_xor(Tensor([1, 0, 3])).numpy())
+    ```
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([True, True, False, False]).bitwise_xor(Tensor([True, False, True, False])).numpy())
+    ```
+    """
+    return self._binop(Ops.OR, x, reverse)
+  def bitwise_xor(self, x, reverse:bool=False):
+    """
+    Compute the bitwise OR of `self` and `x`.
+    Equivalent to `self | x`.
+    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([2, 5, 255]).bitwise_or(Tensor([4, 4, 4])).numpy())
+    ```
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([True, True, False, False]).bitwise_or(Tensor([True, False, True, False])).numpy())
+    ```
+    """
+    return self._binop(Ops.XOR, x, reverse)
+  def idiv(self, x, reverse:bool=False): return self._binop(Ops.IDIV, x, reverse)
+  def mod(self, x, reverse:bool=False): return self._binop(Ops.MOD, x, reverse)
+  def sub(self, x, reverse:bool=False): return self.ufix(x).alu(Ops.ADD, -self) if reverse else self.alu(Ops.ADD, self.ufix(-x))
+  def div(self, x, reverse:bool=False): return (self.ufix(x)*self.alu(Ops.RECIP)) if reverse else (self*self.ufix(x).alu(Ops.RECIP))
+  def lshift(self, x:int, reverse:bool=False): return self._binop(Ops.SHL, x, reverse)
+  def rshift(self, x:int, reverse:bool=False): return self._binop(Ops.SHR, x, reverse)
+  def cmplt(self, x, reverse:bool=False): return self._binop(Ops.CMPLT, x, reverse)
 
   def __add__(self, x): return self.add(x)
   def __sub__(self, x): return self.sub(x)
