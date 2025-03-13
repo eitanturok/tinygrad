@@ -27,55 +27,11 @@ class MathTrait:
     if (dtype:=getattr(self, 'dtype')) is None: raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self*(-1)
   def __neg__(self): return self.neg()
-  def reciprocal(self):
-    """
-    Compute `1/x` element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 3., 4.]).reciprocal().numpy())
-    ```
-    """
-    return self.alu(Ops.RECIP)
-  def sqrt(self):
-    """
-    Computes the square root of the tensor element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 3., 4.]).sqrt().numpy())
-    ```
-    """
-    return self.alu(Ops.SQRT)
-  def sin(self):
-    """
-    Computes the sine of the tensor element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([0., math.pi/2, math.pi, 3*math.pi/2, 2*math.pi]).sin().numpy())
-    ```
-    """
-    return self.alu(Ops.SIN)
-  def log2(self):
-    """
-    Computes the base-2 logarithm element-wise.
-
-    See: https://en.wikipedia.org/wiki/Logarithm
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 4., 8.]).log2().numpy())
-    ```
-    """
-    return self.alu(Ops.LOG2)
-  def exp2(self):
-    """
-    Computes the base-2 exponential function element-wise.
-
-    See: https://en.wikipedia.org/wiki/Exponential_function
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([0., 1., 2., 3.]).exp2().numpy())
-    ```
-    """
-    return self.alu(Ops.EXP2)
+  def reciprocal(self): return self.alu(Ops.RECIP)
+  def sqrt(self): return self.alu(Ops.SQRT)
+  def sin(self): return self.alu(Ops.SIN)
+  def log2(self): return self.alu(Ops.LOG2)
+  def exp2(self): return self.alu(Ops.EXP2)
 
   # binary functions
   def ufix(self, x): return self.const_like(x) if not isinstance(x, MathTrait) else x
@@ -83,46 +39,9 @@ class MathTrait:
 
   def add(self, x, reverse:bool=False): return self._binop(Ops.ADD, x, reverse)
   def mul(self, x, reverse:bool=False): return self._binop(Ops.MUL, x, reverse)
-  def bitwise_and(self, x, reverse:bool=False):
-    """
-    Compute the bitwise AND of `self` and `x`.
-    Equivalent to `self & x`.
-    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([2, 5, 255]).bitwise_and(Tensor([3, 14, 16])).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([True, True, False, False]).bitwise_and(Tensor([True, False, True, False])).numpy())
-    ```
-    """
-    return self._binop(Ops.AND, x, reverse)
-  def bitwise_or(self, x, reverse:bool=False):
-    """
-    Computes bitwise xor of `self` and `x`.
-    Equivalent to `self ^ x`.
-    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([-1, -2, 3]).bitwise_xor(Tensor([1, 0, 3])).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([True, True, False, False]).bitwise_xor(Tensor([True, False, True, False])).numpy())
-    ```
-    """
-    return self._binop(Ops.OR, x, reverse)
-  def bitwise_xor(self, x, reverse:bool=False):
-    """
-    Compute the bitwise OR of `self` and `x`.
-    Equivalent to `self | x`.
-    Supports broadcasting to a common shape, type promotion, and integer, boolean inputs.
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([2, 5, 255]).bitwise_or(Tensor([4, 4, 4])).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([True, True, False, False]).bitwise_or(Tensor([True, False, True, False])).numpy())
-    ```
-    """
-    return self._binop(Ops.XOR, x, reverse)
+  def bitwise_and(self, x, reverse:bool=False): return self._binop(Ops.AND, x, reverse)
+  def bitwise_or(self, x, reverse:bool=False): return self._binop(Ops.OR, x, reverse)
+  def bitwise_xor(self, x, reverse:bool=False): return self._binop(Ops.XOR, x, reverse)
   def idiv(self, x, reverse:bool=False): return self._binop(Ops.IDIV, x, reverse)
   def mod(self, x, reverse:bool=False): return self._binop(Ops.MOD, x, reverse)
   def sub(self, x, reverse:bool=False): return self.ufix(x).alu(Ops.ADD, -self) if reverse else self.alu(Ops.ADD, self.ufix(-x))
