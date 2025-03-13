@@ -24,16 +24,60 @@ class MathTrait:
   def const_like(self:T, b:ConstLike) -> T: raise NotImplementedError
 
   # unary functions
-  def reciprocal(self): return self.alu(Ops.RECIP)
-  def sqrt(self): return self.alu(Ops.SQRT)
-  def sin(self): return self.alu(Ops.SIN)
-  def log2(self): return self.alu(Ops.LOG2)
-  def exp2(self): return self.alu(Ops.EXP2)
   def logical_not(self): return self.ne(True)
   def neg(self):
     if (dtype:=getattr(self, 'dtype')) is None: raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self*(-1)
   def __neg__(self): return self.neg()
+  def reciprocal(self):
+    """
+    Compute `1/x` element-wise.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([1., 2., 3., 4.]).reciprocal().numpy())
+    ```
+    """
+    return self.alu(Ops.RECIP)
+  def sqrt(self):
+    """
+    Computes the square root of the tensor element-wise.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([1., 2., 3., 4.]).sqrt().numpy())
+    ```
+    """
+    return self.alu(Ops.SQRT)
+  def sin(self):
+    """
+    Computes the sine of the tensor element-wise.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([0., math.pi/2, math.pi, 3*math.pi/2, 2*math.pi]).sin().numpy())
+    ```
+    """
+    return self.alu(Ops.SIN)
+  def log2(self):
+    """
+    Computes the base-2 logarithm element-wise.
+
+    See: https://en.wikipedia.org/wiki/Logarithm
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([1., 2., 4., 8.]).log2().numpy())
+    ```
+    """
+    return self.alu(Ops.LOG2)
+  def exp2(self):
+    """
+    Computes the base-2 exponential function element-wise.
+
+    See: https://en.wikipedia.org/wiki/Exponential_function
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(Tensor([0., 1., 2., 3.]).exp2().numpy())
+    ```
+    """
+    return self.alu(Ops.EXP2)
 
   # binary functions
   def ufix(self, x): return self.const_like(x) if not isinstance(x, MathTrait) else x

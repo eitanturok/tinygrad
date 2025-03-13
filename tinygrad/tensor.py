@@ -194,7 +194,9 @@ class Tensor(MathTrait):
     lhs,rhs = self._broadcasted(x, reverse)
     return lhs._apply_uop(fxn, rhs)
 
-  def alu(self, op:Ops, *src:Tensor) -> Tensor: return self._apply_uop(op, *src)
+  def alu(self, op:Ops, *src:Tensor) -> Tensor:
+    if op in {Ops.RECIP, Ops.SQRT, Ops.SIN, Ops.LOG2, Ops.EXP2}: return self.cast(least_upper_float(self.dtype))._apply_uop(op)
+    return self._apply_uop(op, *src)
   def const_like(self, b): return self._broadcasted(b)[1]
 
   def requires_grad_(self, requires_grad=True) -> Tensor:
@@ -2647,18 +2649,6 @@ class Tensor(MathTrait):
     """
     return self.log2()*math.log(2)
 
-  def log2(self) -> Tensor:
-    """
-    Computes the base-2 logarithm element-wise.
-
-    See: https://en.wikipedia.org/wiki/Logarithm
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 4., 8.]).log2().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.log2)
-
   def exp(self) -> Tensor:
     """
     Computes the exponential function element-wise.
@@ -2670,18 +2660,6 @@ class Tensor(MathTrait):
     ```
     """
     return self.mul(1/math.log(2)).exp2()
-
-  def exp2(self) -> Tensor:
-    """
-    Computes the base-2 exponential function element-wise.
-
-    See: https://en.wikipedia.org/wiki/Exponential_function
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([0., 1., 2., 3.]).exp2().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
 
   def relu(self) -> Tensor:
     """
@@ -2721,16 +2699,6 @@ class Tensor(MathTrait):
     """
     return (alpha * self + beta).relu() - (alpha * self + beta - 1).relu()
 
-  def sqrt(self) -> Tensor:
-    """
-    Computes the square root of the tensor element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 3., 4.]).sqrt().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.sqrt)
-
   def rsqrt(self) -> Tensor:
     """
     Computes the reciprocal of the square root of the tensor element-wise.
@@ -2740,16 +2708,6 @@ class Tensor(MathTrait):
     ```
     """
     return self.sqrt().reciprocal()
-
-  def sin(self) -> Tensor:
-    """
-    Computes the sine of the tensor element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([0., math.pi/2, math.pi, 3*math.pi/2, 2*math.pi]).sin().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.sin)
 
   def cos(self) -> Tensor:
     """
@@ -2938,16 +2896,6 @@ class Tensor(MathTrait):
     ```
     """
     return self * self.sign()
-
-  def reciprocal(self) -> Tensor:
-    """
-    Compute `1/x` element-wise.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([1., 2., 3., 4.]).reciprocal().numpy())
-    ```
-    """
-    return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.reciprocal)
 
   # ***** activation functions *****
 
