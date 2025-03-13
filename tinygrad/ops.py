@@ -64,7 +64,6 @@ class MathTrait:
   def __lshift__(self, x): return self.lshift(x)
   def __rshift__(self, x): return self.rshift(x)
   def __lt__(self, x): return self.cmplt(x)
-  def __ge__(self, x): return self.cmplt(x).logical_not()
 
   def __radd__(self, x): return self.add(x, True)
   def __rsub__(self, x): return self.sub(x, True)
@@ -78,7 +77,6 @@ class MathTrait:
   def __rlshift__(self, x): return self.lshift(x, True)
   def __rrshift__(self, x): return self.rshift(x, True)
   def __gt__(self, x): return self.cmplt(x, True)
-  def __le__(self, x): return self.cmplt(x, True).logical_not()
 
   def pow(self, x): return self.alu(Ops.POW, self.ufix(x))
   def maximum(self, x): return self.alu(Ops.MAX, self.ufix(x))
@@ -88,6 +86,8 @@ class MathTrait:
   def eq(self, x): return self.ne(x).logical_not()
   def __ne__(self, x): return self.ne(x)
   # NOTE: __eq__ isn't overridden, and means the same thing as is by default
+  def __ge__(self, x): return (self < x).logical_not()
+  def __le__(self, x): return (self > x).logical_not()
 
   # ternary functions
   def where(self, x, y): return self.alu(Ops.WHERE, x, x.ufix(y))

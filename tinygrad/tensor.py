@@ -179,14 +179,23 @@ class Tensor(MathTrait):
     all_tensors.add(weakref.ref(self))
   def __del__(self): all_tensors.discard(weakref.ref(self))
 
-  def _apply_uop(self, fxn:Callable, *x:Tensor, **kwargs) -> Tensor:
-    new_uop: UOp = fxn(*[t.lazydata for t in (self,)+x], **kwargs)
+  def _apply_uop(self, fxn_or_op:Callable|Ops, *x:Tensor, **kwargs) -> Tensor:
     needs_input_grad = [t.requires_grad for t in (self,)+x]
-    return Tensor(new_uop, device=new_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
+    requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
+    if callable(fxn_or_op): return Tensor(new_uop:=fxn_or_op(*[t.lazydata for t in (self,)+x], **kwargs), device=new_uop.device, requires_grad=requires_grad)
+    return Tensor(self.lazydata.alu(fxn_or_op, *[t.lazydata for t in x], **kwargs), device=self.device, requires_grad=requires_grad)
+
+  # def _apply_uop(self, fxn:Callable, *x:Tensor, **kwargs) -> Tensor:
+  #   new_uop: UOp = fxn(*[t.lazydata for t in (self,)+x], **kwargs)
+  #   needs_input_grad = [t.requires_grad for t in (self,)+x]
+  #   return Tensor(new_uop, device=new_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
 
   def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Tensor:
     lhs,rhs = self._broadcasted(x, reverse)
     return lhs._apply_uop(fxn, rhs)
+
+  def alu(self, op:Ops, *src:Tensor) -> Tensor: return self._apply_uop(op, *src)
+  def const_like(self, b): return self._broadcasted(b)[1]
 
   def requires_grad_(self, requires_grad=True) -> Tensor:
     self.requires_grad = requires_grad
@@ -3235,6 +3244,7 @@ class Tensor(MathTrait):
     if reverse: x, y = y, x
 
     # broadcast
+    # ic(x.shape, y.shape)
     return x._broadcast_to(out_shape:=_broadcast_shape(x.shape, y.shape)), y._broadcast_to(out_shape)
 
   def add(self, x:Tensor|ConstType, reverse=False) -> Tensor:
