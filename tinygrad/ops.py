@@ -19,7 +19,7 @@ class FastEnum(IntEnum):
 class MathTrait:
   # required to implement
   def alu(self:T, arg:Ops, *src) -> T: raise NotImplementedError
-  def const_like(self:T, b:ConstLike) -> T: raise NotImplementedError
+  def const_like(self:T, b:ConstLike, alu_arg:bool) -> T: raise NotImplementedError
 
   # unary functions
   def logical_not(self): return self.ne(True)
@@ -34,8 +34,8 @@ class MathTrait:
   def exp2(self): return self.alu(Ops.EXP2)
 
   # binary functions
-  def ufix(self, x): return self.const_like(x) if not isinstance(x, MathTrait) else x
-  def _binop(self, op, x, reverse): return self.ufix(x).alu(op, self) if reverse else self.alu(op, self.ufix(x))
+  def ufix(self, x, alu_arg): return self.const_like(x, alu_arg) if not isinstance(x, MathTrait) else x
+  def _binop(self, op, x, reverse): return self.ufix(x, False).alu(op, self) if reverse else self.alu(op, self.ufix(x, True))
 
   def add(self, x, reverse:bool=False): return self._binop(Ops.ADD, x, reverse)
   def mul(self, x, reverse:bool=False): return self._binop(Ops.MUL, x, reverse)
@@ -44,8 +44,8 @@ class MathTrait:
   def bitwise_xor(self, x, reverse:bool=False): return self._binop(Ops.XOR, x, reverse)
   def idiv(self, x, reverse:bool=False): return self._binop(Ops.IDIV, x, reverse)
   def mod(self, x, reverse:bool=False): return self._binop(Ops.MOD, x, reverse)
-  def sub(self, x, reverse:bool=False): return self.ufix(x).alu(Ops.ADD, -self) if reverse else self.alu(Ops.ADD, self.ufix(-x))
-  def div(self, x, reverse:bool=False): return (self.ufix(x)*self.alu(Ops.RECIP)) if reverse else (self*self.ufix(x).alu(Ops.RECIP))
+  def sub(self, x, reverse:bool=False): return self.ufix(x, False).alu(Ops.ADD, -self) if reverse else self.alu(Ops.ADD, self.ufix(-x, True))
+  def div(self, x, reverse:bool=False): return (self.ufix(x, False)*self.alu(Ops.RECIP)) if reverse else (self*self.ufix(x, False).alu(Ops.RECIP))
   def lshift(self, x:int, reverse:bool=False): return self._binop(Ops.SHL, x, reverse)
   def rshift(self, x:int, reverse:bool=False): return self._binop(Ops.SHR, x, reverse)
   def cmplt(self, x, reverse:bool=False): return self._binop(Ops.CMPLT, x, reverse)
@@ -76,11 +76,11 @@ class MathTrait:
   def __rrshift__(self, x): return self.rshift(x, True)
   def __gt__(self, x): return self.cmplt(x, True)
 
-  def pow(self, x): return self.alu(Ops.POW, self.ufix(x))
-  def maximum(self, x): return self.alu(Ops.MAX, self.ufix(x))
+  def pow(self, x): return self.alu(Ops.POW, self.ufix(x, True))
+  def maximum(self, x): return self.alu(Ops.MAX, self.ufix(x, True))
   def minimum(self, x): return -(-self).maximum(-x)
   def threefry(self, seed): return self.alu(Ops.THREEFRY, seed)
-  def ne(self, x): return self.alu(Ops.CMPNE, self.ufix(x))
+  def ne(self, x): return self.alu(Ops.CMPNE, self.ufix(x, True))
   def eq(self, x): return self.ne(x).logical_not()
   def __ne__(self, x): return self.ne(x)
   # NOTE: __eq__ isn't overridden, and means the same thing as is by default
@@ -88,7 +88,7 @@ class MathTrait:
   def __le__(self, x): return (self > x).logical_not()
 
   # ternary functions
-  def where(self, x, y): return self.alu(Ops.WHERE, x, x.ufix(y))
+  def where(self, x, y): return self.alu(Ops.WHERE, x, x.ufix(y, True))
 
 # the order of these Ops controls the order of the toposort
 class Ops(FastEnum):
@@ -356,7 +356,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
   def sink(self, *srcs:UOp): return UOp(Ops.SINK, dtypes.void, (self,)+srcs)
   def detach(self): return UOp(Ops.DETACH, self.dtype, (self,))
   def index(self, idx:UOp, valid:UOp|None=None): return UOp(Ops.INDEX, self.dtype, (self,idx,valid) if valid is not None else (self,idx))
-  def const_like(self, b:ConstLike):
+  def const_like(self, b:ConstLike, alu_arg:bool):
     # constants can optionally have a DEVICE source
     if self._device is None: return UOp.const(self.dtype, b)
     if isinstance(self.device, tuple): return UOp.multi(*[UOp.metaop(Ops.CONST, self.shape, self.dtype, d, b) for d in self.device], axis=None)
@@ -747,7 +747,7 @@ class UPat(MathTrait):
   def store(self, *src:UPat, **kwargs): return UPat(Ops.STORE, dtypes.void, (self,)+src, **kwargs)
   def assign(self, x:UPat, **kwargs): return UPat(Ops.ASSIGN, self.dtype, (self,x), **kwargs)
 
-  def const_like(self, b:ConstLike): return UPat.const(self.dtype, cast(ConstType, b))
+  def const_like(self, b:ConstLike, alu_arg:bool): return UPat.const(self.dtype, cast(ConstType, b))
   def alu(self, op:Ops, *src:UPat):
     asrc = (self,)+src
     return UPat(op, dtypes.bool if op in {Ops.CMPLT, Ops.CMPNE} else asrc[-1].dtype, list(asrc) if op in GroupOp.Commutative else asrc)

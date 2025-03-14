@@ -194,9 +194,11 @@ class Tensor(MathTrait):
     elif op in {Ops.XOR, Ops.AND, Ops.OR}:
       if self.dtype != dtypes.bool and not dtypes.is_int(self.dtype): raise RuntimeError(f"{self.dtype} is not supported")
       return self._apply_broadcasted_uop(op, *src)
+    elif op in {UOp.add, UOp.sub, UOp.mul, UOp.idiv, UOp.maximum}:
+      return self._apply_broadcasted_uop(op, *src)
 
     return self._apply_uop(op, *src)
-  def const_like(self, b): return self._broadcasted(b)[1]
+  def const_like(self, b, alu_arg:bool): return self._broadcasted(b)[0 if alu_arg else 1]
 
   def requires_grad_(self, requires_grad=True) -> Tensor:
     self.requires_grad = requires_grad
@@ -3194,79 +3196,79 @@ class Tensor(MathTrait):
     # ic(x.shape, y.shape)
     return x._broadcast_to(out_shape:=_broadcast_shape(x.shape, y.shape)), y._broadcast_to(out_shape)
 
-  def add(self, x:Tensor|ConstType, reverse=False) -> Tensor:
-    """
-    Adds `self` and `x`.
-    Equivalent to `self + x`.
-    Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
+  # def add(self, x:Tensor|ConstType, reverse=False) -> Tensor:
+  #   """
+  #   Adds `self` and `x`.
+  #   Equivalent to `self + x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    t = Tensor.randn(4)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.add(20).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.add(Tensor([[2.0], [3.5]])).numpy())
-    ```
-    """
-    return self._apply_broadcasted_uop(UOp.add, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   t = Tensor.randn(4)
+  #   print(t.numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.add(20).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.add(Tensor([[2.0], [3.5]])).numpy())
+  #   ```
+  #   """
+    # return self._apply_broadcasted_uop(UOp.add, x, reverse)
 
-  def sub(self, x:Tensor|ConstType, reverse=False) -> Tensor:
-    """
-    Subtracts `x` from `self`.
-    Equivalent to `self - x`.
-    Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
+  # def sub(self, x:Tensor|ConstType, reverse=False) -> Tensor:
+  #   """
+  #   Subtracts `x` from `self`.
+  #   Equivalent to `self - x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    t = Tensor.randn(4)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.sub(20).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.sub(Tensor([[2.0], [3.5]])).numpy())
-    ```
-    """
-    a, b = self._broadcasted(x, reverse)
-    return a + (-b)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   t = Tensor.randn(4)
+  #   print(t.numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.sub(20).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.sub(Tensor([[2.0], [3.5]])).numpy())
+  #   ```
+  #   """
+  #   a, b = self._broadcasted(x, reverse)
+  #   return a + (-b)
 
-  def mul(self, x:Tensor|ConstType, reverse=False) -> Tensor:
-    """
-    Multiplies `self` and `x`.
-    Equivalent to `self * x`.
-    Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
+  # def mul(self, x:Tensor|ConstType, reverse=False) -> Tensor:
+  #   """
+  #   Multiplies `self` and `x`.
+  #   Equivalent to `self * x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer, float, boolean inputs.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    t = Tensor.randn(4)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.mul(3).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.mul(Tensor([[-1.0], [2.0]])).numpy())
-    ```
-    """
-    return self._apply_broadcasted_uop(UOp.mul, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   t = Tensor.randn(4)
+  #   print(t.numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.mul(3).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(t.mul(Tensor([[-1.0], [2.0]])).numpy())
+  #   ```
+  #   """
+  #   return self._apply_broadcasted_uop(UOp.mul, x, reverse)
 
-  def idiv(self, x:Tensor|ConstType, reverse=False) -> Tensor:
-    """
-    Divides `self` by `x`.
-    Equivalent to `self // x`.
-    Supports broadcasting to a common shape, type promotion, and integer inputs.
-    `idiv` performs integer division (truncate towards zero).
+  # def idiv(self, x:Tensor|ConstType, reverse=False) -> Tensor:
+  #   """
+  #   Divides `self` by `x`.
+  #   Equivalent to `self // x`.
+  #   Supports broadcasting to a common shape, type promotion, and integer inputs.
+  #   `idiv` performs integer division (truncate towards zero).
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([-4, 7, 5, 4, -7, 8]).idiv(Tensor([2, -3, 8, -2, 3, 5])).numpy())
-    ```
-    """
-    return self._apply_broadcasted_uop(UOp.idiv, x, reverse)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([-4, 7, 5, 4, -7, 8]).idiv(Tensor([2, -3, 8, -2, 3, 5])).numpy())
+  #   ```
+  #   """
+  #   return self._apply_broadcasted_uop(UOp.idiv, x, reverse)
 
   def div(self, x:Tensor|ConstType, reverse=False, rounding_mode:Literal["trunc", "floor"]|None=None) -> Tensor:
     """
@@ -3371,18 +3373,18 @@ class Tensor(MathTrait):
     ret = base._apply_uop(UOp.pow, exponent)
     return ret.round().cast(self.dtype) if not dtypes.is_float(self.dtype) else ret
 
-  def maximum(self, x:Tensor|ConstType) -> Tensor:
-    """
-    Computes element-wise maximum of `self` and `x`.
+  # def maximum(self, x:Tensor|ConstType) -> Tensor:
+  #   """
+  #   Computes element-wise maximum of `self` and `x`.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([-1, 2, 3]).maximum(1).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(Tensor([-1, 2, 3]).maximum(Tensor([-4, -2, 9])).numpy())
-    ```
-    """
-    return self._apply_broadcasted_uop(UOp.maximum, x)
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([-1, 2, 3]).maximum(1).numpy())
+  #   ```
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   print(Tensor([-1, 2, 3]).maximum(Tensor([-4, -2, 9])).numpy())
+  #   ```
+  #   """
+  #   return self._apply_broadcasted_uop(UOp.maximum, x)
 
   def minimum(self, x:Tensor|ConstType) -> Tensor:
     """
