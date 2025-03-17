@@ -9,6 +9,9 @@ import numpy as np
 import math
 from hypothesis import given, settings, strategies as strat
 
+from icecream import ic, install
+install()
+
 settings.register_profile("my_profile", max_examples=200, deadline=None, derandomize=getenv("DERANDOMIZE_CI", False))
 settings.load_profile("my_profile")
 
@@ -136,12 +139,14 @@ class TestTranscendentalVectorized(unittest.TestCase):
 
   def _test_vectorized_op(self, fxn, np_fxn, data_range, vec_size, param_range=None):
     data, np_data = self._vectorized_data(data_range[0], data_range[1], vec_size)
-    if param_range:
-      param, np_param = self._vectorized_data(param_range[0], param_range[1], vec_size)
-      out, np_out = fxn(data, param), np_fxn(np_data, np_param)
-    else:
-      out, np_out = fxn(data), np_fxn(np_data)
-    np.testing.assert_allclose(out.numpy(), np_out, rtol=1e-4)
+    ic(data.realize().dtype)
+    with Context(DEVECTORIZE=0):
+      if param_range:
+        param, np_param = self._vectorized_data(param_range[0], param_range[1], vec_size)
+        out, np_out = fxn(data, param), np_fxn(np_data, np_param)
+      else:
+        out, np_out = fxn(data), np_fxn(np_data)
+      np.testing.assert_allclose(out.numpy(), np_out, rtol=1e-4)
 
   def test_exp2_vectorized(self):
     for vec_size in [1,2,3,4,5,127,128]: self._test_vectorized_op(Tensor.exp2, np.exp2, (-100, 100), vec_size)
@@ -155,6 +160,15 @@ class TestTranscendentalVectorized(unittest.TestCase):
   def test_pow_vectorized(self):
     # np.pow returns nan for negative values raised to a non-integral power
     for vec_size in [1,2,3,4,5,127,128]: self._test_vectorized_op(Tensor.pow, np.pow, (0.001, 200), vec_size, param_range=(-10, 10))
+
+  def test_vectorized(self):
+    data_range, vec_size = (0, 100), 4
+    data, np_data = self._vectorized_data(data_range[0], data_range[1], vec_size)
+    out = Tensor.exp2(data)
+    ic(out.realize().dtype)
+    ic(out.numpy())
+    np_out = np.exp2(np_data)
+    np.testing.assert_allclose(out.numpy(), np_out, rtol=1e-4)
 
 if __name__ == '__main__':
   unittest.main()

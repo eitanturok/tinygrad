@@ -2,7 +2,7 @@ import unittest, math
 import numpy as np
 from tinygrad import dtypes
 from tinygrad.ops import UOp, Ops
-from tinygrad.codegen.transcendental import payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if
+from tinygrad.codegen.transcendental import payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if, _shl_lazy
 from test.helpers import eval_uop
 
 class TestTranscendentalFunctions(unittest.TestCase):
@@ -69,6 +69,9 @@ class TestTranscendentalFunctions(unittest.TestCase):
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -2), dtypes.float)), 0.25)
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -10), dtypes.float)), 2**-10)
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -63), dtypes.float)), 2**-63)
+
+  def test_shl_lazy(self):
+    _shl_lazy(x, y)
 
 if __name__ == '__main__':
   unittest.main()
