@@ -2,7 +2,9 @@ import unittest, math
 import numpy as np
 from tinygrad import dtypes
 from tinygrad.ops import UOp, Ops
-from tinygrad.codegen.transcendental import payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if, _shl_lazy
+from tinygrad.helpers import Context
+from tinygrad.codegen.transcendental import payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if, TRANSCENDENTAL_SUPPORTED_DTYPES
+from hypothesis import given, strategies as strat
 from test.helpers import eval_uop
 
 class TestTranscendentalFunctions(unittest.TestCase):
@@ -70,8 +72,28 @@ class TestTranscendentalFunctions(unittest.TestCase):
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -10), dtypes.float)), 2**-10)
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -63), dtypes.float)), 2**-63)
 
-  def test_shl_lazy(self):
-    _shl_lazy(x, y)
+class TestVectorizedTranscendetalFunctions(unittest.TestCase):
+
+  def _check_all_vectorized(self, u: tuple|UOp, vcount: int):
+    # check all UOps in u are vectorized
+    if isinstance(u, UOp): assert u.dtype.vcount == vcount, f'expected {vcount=} but got {u.dtype.vcount=} for UOp {u=}'
+    [self._check_all_vectorized(x, vcount) for x in (u if isinstance(u, tuple) else u.src)]
+
+  @given(strat.floats(width=16, allow_subnormal=False), strat.integers(1, 255), strat.sampled_from(TRANSCENDENTAL_SUPPORTED_DTYPES))
+  def test_vectorized_payne_hanek_reduction(self, val, vcount, dtype):
+    # test payne_hanek_reduction preserves vectorization
+    with Context(DEVECTORIZE=0):
+      d = UOp.const(dtype.vec(vcount), val)
+      out = payne_hanek_reduction(d)
+      self._check_all_vectorized(out, vcount)
+
+  @given(strat.floats(width=16, allow_subnormal=False), strat.integers(1, 255), strat.sampled_from(TRANSCENDENTAL_SUPPORTED_DTYPES))
+  def test_vectorized_cody_waite_reduction(self, val, vcount, dtype):
+    # test cody_waite_reduction preserves vectorization
+    with Context(DEVECTORIZE=0):
+      d = UOp.const(dtype.vec(vcount), val)
+      out = cody_waite_reduction(d)
+      self._check_all_vectorized(out, vcount)
 
 if __name__ == '__main__':
   unittest.main()
