@@ -75,10 +75,10 @@ def payne_hanek_reduction(d:UOp) -> tuple[UOp, UOp]:
   # 190 bits of 2/pi for Payne-Hanek style argument reduction
   two_over_pi_f = [0x00000000, 0x28be60db, 0x9391054a, 0x7f09d5f4, 0x7d4d3770, 0x36d8a566, 0x4f10e410]
 
-  intermediate_dtype = dtypes.float32.vec(d.dtype.count) if d.dtype.base == dtypes.float16 else d.dtype
+  intermediate_dtype = dtypes.float32 if d.dtype.scalar().base == dtypes.float16 else d.dtype
 
   f, e = frexp(d)
-  ia = (f.cast(intermediate_dtype) * 4.294967296e9).cast_vec(dtypes.uint64)
+  ia = (f.cast_vec(intermediate_dtype) * 4.294967296e9).cast_vec(dtypes.uint64)
   # extract 96 relevant bits of 2/pi based on magnitude of argument
   i = shr(e.cast_vec(dtypes.uint64), 5)
   e = e.cast_vec(dtypes.int32) & 31
@@ -106,7 +106,7 @@ def payne_hanek_reduction(d:UOp) -> tuple[UOp, UOp]:
   # round quotient to nearest
   q = shr(p, 62).cast_vec(dtypes.int32)
   p = p & 0x3fffffffffffffff
-  r = (p.cast(intermediate_dtype) * (3.4061215800865545e-19)).cast(d.dtype)
+  r = (p.cast_vec(intermediate_dtype) * (3.4061215800865545e-19)).cast(d.dtype)
 
   # if fraction >= 0.5, r -= pi/2, q += 1
   return (f<0.5).where(r, r - math.pi/2), (f<0.5).where(q, q + 1)
@@ -201,7 +201,7 @@ def xexp2(d:UOp) -> UOp:
   # s = d - round(d)
   s = x - q.cast(x.dtype)
   # a polynomial approximation with 13 non-zero terms in the range of [−(log 2)/2,(log 2)/2].
-  if d.dtype == dtypes.float64:
+  if d.dtype.scalar() == dtypes.float64:
     u = polyN(s, [0.4434359082926529454e-9, 0.7073164598085707425e-8, 0.1017819260921760451e-6, 0.1321543872511327615e-5, 0.1525273353517584730e-4,
                   0.1540353045101147808e-3, 0.1333355814670499073e-2, 0.9618129107597600536e-2, 0.5550410866482046596e-1, 0.2402265069591012214e+0,
                   0.6931471805599452862e+0, 0.1000000000000000000e+1])
