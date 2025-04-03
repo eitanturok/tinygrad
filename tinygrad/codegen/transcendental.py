@@ -222,8 +222,8 @@ def xlog2(d:UOp) -> UOp:
   """
   assert d.dtype.scalar() in TRANSCENDENTAL_SUPPORTED_DTYPES, f"{d.dtype.scalar()=} not supported in transcendental"
   # TODO: float16 denormal need float32 to achieve precision
-  if d.dtype == dtypes.float16: return xlog2(d.cast(dtypes.float32)).cast(dtypes.float16)
-  FLT_MIN = d.const_like(1e-6 if d.dtype == dtypes.float16 else 1e-4)
+  if d.dtype.scalar() == dtypes.float16: return xlog2(d.cast_vec(dtypes.float32)).cast_vec(dtypes.float16)
+  FLT_MIN = d.const_like(1e-6 if d.dtype.scalar() == dtypes.float16 else 1e-4)
   is_denormal = d<FLT_MIN
   a = is_denormal.where(d * (2 ** 64), d)
 
@@ -233,7 +233,7 @@ def xlog2(d:UOp) -> UOp:
 
   x = (m - 1.0) / (m + 1.0)
   x2 = x * x
-  if d.dtype == dtypes.float64:
+  if d.dtype.scalar() == dtypes.float64:
     t = polyN(x2, [0.2211941750456081490e+0, 0.2200768693152277689e+0, 0.2623708057488514656e+0, 0.3205977477944495502e+0,
                    0.4121985945485324709e+0, 0.5770780162997058982e+0, 0.96179669392608091449])
     s_hi, s_lo = e+x*2.885390081777926774, e.const_like(0)

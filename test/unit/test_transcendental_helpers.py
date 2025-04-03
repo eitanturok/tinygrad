@@ -3,9 +3,11 @@ import numpy as np
 from tinygrad import dtypes
 from tinygrad.ops import UOp, Ops
 from tinygrad.helpers import Context
-from tinygrad.codegen.transcendental import payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if, TRANSCENDENTAL_SUPPORTED_DTYPES
+from tinygrad.codegen.transcendental import TRANSCENDENTAL_SUPPORTED_DTYPES, payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if, xpow, xlog2
 from hypothesis import given, strategies as strat
 from test.helpers import eval_uop
+from icecream import install
+install()
 
 class TestTranscendentalFunctions(unittest.TestCase):
   def test_payne_hanek_reduction(self):
@@ -73,7 +75,6 @@ class TestTranscendentalFunctions(unittest.TestCase):
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -63), dtypes.float)), 2**-63)
 
 class TestVectorizedTranscendetalFunctions(unittest.TestCase):
-
   def _check_all_vectorized(self, u: tuple|UOp, vcount: int):
     # check all UOps in u are vectorized
     if isinstance(u, UOp): assert u.dtype.vcount == vcount, f'expected {vcount=} but got {u.dtype.vcount=} for UOp {u=}'
@@ -94,6 +95,16 @@ class TestVectorizedTranscendetalFunctions(unittest.TestCase):
       d = UOp.const(dtype.vec(vcount), val)
       out = cody_waite_reduction(d)
       self._check_all_vectorized(out, vcount)
+
+  def test_xlog2_vectorized(self):
+    with Context(DEVECTORIZE=0):
+      for vcount in [1,2,4]:
+        for val in [1.3, -2, 194]:
+          for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+            ic(vcount, val, dtype)
+            d = UOp.const(dtype.vec(vcount), val)
+            out = xlog2(d)
+            self._check_all_vectorized(out, vcount)
 
 if __name__ == '__main__':
   unittest.main()
