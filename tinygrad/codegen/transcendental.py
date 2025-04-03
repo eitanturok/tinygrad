@@ -75,10 +75,10 @@ def payne_hanek_reduction(d:UOp) -> tuple[UOp, UOp]:
   # 190 bits of 2/pi for Payne-Hanek style argument reduction
   two_over_pi_f = [0x00000000, 0x28be60db, 0x9391054a, 0x7f09d5f4, 0x7d4d3770, 0x36d8a566, 0x4f10e410]
 
-  intermediate_dtype = dtypes.float32 if d.dtype.scalar().base == dtypes.float16 else d.dtype
+  intermediate_dtype = dtypes.float32.vec(d.dtype.vcount) if d.dtype.scalar().base == dtypes.float16 else d.dtype
 
   f, e = frexp(d)
-  ia = (f.cast_vec(intermediate_dtype) * 4.294967296e9).cast_vec(dtypes.uint64)
+  ia = (f.cast(intermediate_dtype) * 4.294967296e9).cast_vec(dtypes.uint64)
   # extract 96 relevant bits of 2/pi based on magnitude of argument
   i = shr(e.cast_vec(dtypes.uint64), 5)
   e = e.cast_vec(dtypes.int32) & 31
@@ -106,7 +106,7 @@ def payne_hanek_reduction(d:UOp) -> tuple[UOp, UOp]:
   # round quotient to nearest
   q = shr(p, 62).cast_vec(dtypes.int32)
   p = p & 0x3fffffffffffffff
-  r = (p.cast_vec(intermediate_dtype) * (3.4061215800865545e-19)).cast(d.dtype)
+  r = (p.cast(intermediate_dtype) * (3.4061215800865545e-19)).cast(d.dtype)
 
   # if fraction >= 0.5, r -= pi/2, q += 1
   return (f<0.5).where(r, r - math.pi/2), (f<0.5).where(q, q + 1)
@@ -119,7 +119,7 @@ def cody_waite_reduction(d:UOp) -> tuple[UOp, UOp]:
   """
   def _reduce_d(x:UOp, q:UOp):
     # https://github.com/shibatch/sleef/blob/4e08851f59fc2b545f9c393c6a23dfd311a26308/src/libm/sleefdp.c#L789-L823
-    if x.dtype == dtypes.float64:
+    if x.dtype.scalar() == dtypes.float64:
       # https://github.com/shibatch/sleef/blob/f6d8a841fbfddd26ce712834d4da220cd76048fb/src/common/misc.h#L77
       PI_A, PI_B, PI_C, PI_D = 3.1415926218032836914, 3.1786509424591713469e-08, 1.2246467864107188502e-16, 1.2736634327021899816e-24
       d = qdh * -PI_A + x
@@ -129,9 +129,9 @@ def cody_waite_reduction(d:UOp) -> tuple[UOp, UOp]:
       d = qdh * -PI_C + d
       d = q * -PI_C + d
       d = (qdh + q) * -PI_D + d
-    elif x.dtype == dtypes.float16:
+    elif x.dtype.scalar() == dtypes.float16:
       # [FIXME] when reducing `d`, FP16 needs FP32 precision to achieve 1.0 ULP precision.
-      d = _reduce_d(x.cast(dtypes.float32), q.cast(dtypes.float32)).cast(dtypes.float16)
+      d = _reduce_d(x.cast_vec(dtypes.float32), q.cast_vec(dtypes.float32)).cast_vec(dtypes.float16)
     else:
       # https://github.com/shibatch/sleef/blob/4e08851f59fc2b545f9c393c6a23dfd311a26308/src/libm/sleefsp.c#L464-L503
       d = q * -3.1414794921875 + x
@@ -142,7 +142,7 @@ def cody_waite_reduction(d:UOp) -> tuple[UOp, UOp]:
 
   m_1_pi = 0.318309886183790671537767526745028724
   qdh = (d * (m_1_pi / 2.0**24)).cast_vec(dtypes.int64).cast(d.dtype) * (2.0**24)
-  quadrant = rintk(d * m_1_pi -qdh) if d.dtype.base == dtypes.float64 else rintk(d * m_1_pi)
+  quadrant = rintk(d * m_1_pi -qdh) if d.dtype.scalar().base == dtypes.float64 else rintk(d * m_1_pi)
   return _reduce_d(d, quadrant.cast(d.dtype)), quadrant.cast_vec(dtypes.int32)
 
 # *** approximate sine on small angle. ***
@@ -165,7 +165,6 @@ def sin_poly_large(d:UOp, q:UOp) -> UOp:
   return r * _ifand(q, 2).where(r.const_like(-1), r.const_like(1))
 
 # *** toplevel functions for xsin/xlog2/xexp2 ***
-
 def xsin(d:UOp, fast:bool=False, switch_over:float=30.0) -> UOp:
   """
   Implements a 1.0 ULP approximation for Ops.SIN.
