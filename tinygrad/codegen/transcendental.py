@@ -5,7 +5,7 @@ from tinygrad.ops import UOp
 
 TRANSCENDENTAL_SUPPORTED_DTYPES = (dtypes.float16, dtypes.float32, dtypes.float64)
 
-def _lazy_map_numbers(x:UOp, inf:UOp, _inf:UOp, nan:UOp, ratio:UOp):
+def _lazy_map_numbers(x:UOp, inf:UOp, _inf:UOp, nan:UOp, ratio:UOp) -> UOp:
   """replace inf -> inf, -inf -> _inf, nan -> nan, otherwise -> ratio"""
   return x.ne(math.inf).where(x.ne(x).where(nan, x.ne(-math.inf).where(ratio, _inf)), inf)
 
@@ -23,7 +23,7 @@ def rintk(d:UOp) -> UOp:
   out_dtype = {dtypes.float64: dtypes.int64, dtypes.float32: dtypes.int32, dtypes.float16: dtypes.int16}[d.dtype.scalar()].vec(d.dtype.vcount)
   return (d + (d<0.0).where(d.const_like(-0.5), d.const_like(0.5))).cast(out_dtype)
 
-def pow2if(q:UOp, float_dtype:DType):
+def pow2if(q:UOp, float_dtype:DType) -> UOp:
   """cast(2^q, float_dtype) where q is any integer in the range of [-126, 127]"""
   out_dtype = {dtypes.int64: dtypes.float64, dtypes.int32: dtypes.float32, dtypes.int16: float_dtype}[q.dtype.scalar()].vec(q.dtype.vcount)
   return shl(q + exponent_bias(out_dtype), mantissa_bits(out_dtype)).bitcast(out_dtype)
@@ -89,8 +89,8 @@ def payne_hanek_reduction(d:UOp) -> tuple[UOp, UOp]:
     if count+offset < len(two_over_pi_f) - 1:
       an = i.ne(count).where(_take(an, offset, count=count+1), an.const_like(two_over_pi_f[count+offset]))
     return an
-  def _shl_lazy(x, y): return (x.cast_vec(dtypes.uint64) * pow2if(y, d.dtype).cast_vec(dtypes.uint64)).cast_vec(dtypes.uint32)
-  def _shr_lazy(x, y): return (x.cast_vec(dtypes.uint64) // pow2if(y, d.dtype).cast_vec(dtypes.uint64)).cast_vec(dtypes.uint32)
+  def _shl_lazy(x:UOp, y:UOp) -> UOp: return (x.cast_vec(dtypes.uint64) * pow2if(y, d.dtype).cast_vec(dtypes.uint64)).cast_vec(dtypes.uint32)
+  def _shr_lazy(x:UOp, y:UOp) -> UOp: return (x.cast_vec(dtypes.uint64) // pow2if(y, d.dtype).cast_vec(dtypes.uint64)).cast_vec(dtypes.uint32)
 
   a = [_take(UOp.const(dtypes.uint32.vec(d.dtype.count), 0), i) for i in range(4)]
   #  (two_over_pi_f[Int(i) + n] << e) | (two_over_pi_f[Int(i) + n+1] >> (nbits - e))
@@ -117,7 +117,7 @@ def cody_waite_reduction(d:UOp) -> tuple[UOp, UOp]:
       0 <= abs(d) <= 39800.0
   Returns a tuple of `(r, q)`, where the output format is the same as that of `payne_hanek_reduction`.
   """
-  def _reduce_d(x:UOp, q:UOp):
+  def _reduce_d(x:UOp, q:UOp) -> UOp:
     # https://github.com/shibatch/sleef/blob/4e08851f59fc2b545f9c393c6a23dfd311a26308/src/libm/sleefdp.c#L789-L823
     if x.dtype.scalar() == dtypes.float64:
       # https://github.com/shibatch/sleef/blob/f6d8a841fbfddd26ce712834d4da220cd76048fb/src/common/misc.h#L77
@@ -146,7 +146,7 @@ def cody_waite_reduction(d:UOp) -> tuple[UOp, UOp]:
   return _reduce_d(d, quadrant.cast(d.dtype)), quadrant.cast_vec(dtypes.int32)
 
 # *** approximate sine on small angle. ***
-def trig_poly(d:UOp, coeff32, coeff64): return d * (polyN(d*d, coeff64) if d.dtype == dtypes.float64 else polyN(d*d, coeff32))
+def trig_poly(d:UOp, coeff32: list[float], coeff64: list[float]) -> UOp: return d * (polyN(d*d, coeff64) if d.dtype == dtypes.float64 else polyN(d*d, coeff32))
 # approximate sine on [-pi/2, pi/2]
 def sin_poly(d:UOp) -> UOp:
   return trig_poly(d, [2.6083159809786593541503e-06, -0.0001981069071916863322258, 0.00833307858556509017944336, -0.166666597127914428710938, 1.0],
@@ -154,7 +154,7 @@ def sin_poly(d:UOp) -> UOp:
                        -2.50521083763502045810755e-08, 2.75573192239198747630416e-06, -0.000198412698412696162806809, 0.00833333333333332974823815,
                        -0.166666666666666657414808,    1.0])
 
-def _ifand(q:UOp, n:int): return (q & n).ne(0)
+def _ifand(q:UOp, n:int) -> UOp: return (q & n).ne(0)
 
 def sin_poly_small(d:UOp, q:UOp) -> UOp:
   r = sin_poly(d)
