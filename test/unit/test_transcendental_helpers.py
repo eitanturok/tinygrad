@@ -3,10 +3,9 @@ import numpy as np
 from tinygrad import dtypes
 from tinygrad.ops import UOp, Ops
 from tinygrad.helpers import Context
-from tinygrad.codegen.transcendental import TRANSCENDENTAL_SUPPORTED_DTYPES, payne_hanek_reduction, cody_waite_reduction, frexp, rintk, pow2if, xpow, xlog2
-from hypothesis import given, strategies as strat
+from tinygrad.codegen.transcendental import TRANSCENDENTAL_SUPPORTED_DTYPES, payne_hanek_reduction, cody_waite_reduction, rintk, pow2if, xlog2, ilogb2k, frexp, sin_poly, xsin, xexp2, ldexp2k, ldexp3k,  sin_poly_large, sin_poly_small, xpow, shl, shr, trig_poly, _lazy_map_numbers, _ifand
 from test.helpers import eval_uop
-from icecream import install
+from icecream import install, ic
 install()
 
 class TestTranscendentalFunctions(unittest.TestCase):
@@ -75,36 +74,45 @@ class TestTranscendentalFunctions(unittest.TestCase):
     np.testing.assert_allclose(eval_uop(pow2if(UOp.const(dtypes.int, -63), dtypes.float)), 2**-63)
 
 class TestVectorizedTranscendetalFunctions(unittest.TestCase):
-  def _check_all_vectorized(self, u: tuple|UOp, vcount: int):
+  def _check_all_uops_vectorized(self, u: tuple|UOp, vcount: int):
     # check all UOps in u are vectorized
     if isinstance(u, UOp): assert u.dtype.vcount == vcount, f'expected {vcount=} but got {u.dtype.vcount=} for UOp {u=}'
-    [self._check_all_vectorized(x, vcount) for x in (u if isinstance(u, tuple) else u.src)]
+    [self._check_all_uops_vectorized(x, vcount) for x in (u if isinstance(u, tuple) else u.src)]
 
-  @given(strat.floats(width=16, allow_subnormal=False), strat.integers(1, 255), strat.sampled_from(TRANSCENDENTAL_SUPPORTED_DTYPES))
-  def test_vectorized_payne_hanek_reduction(self, val, vcount, dtype):
-    # test payne_hanek_reduction preserves vectorization
-    with Context(DEVECTORIZE=0):
-      d = UOp.const(dtype.vec(vcount), val)
-      out = payne_hanek_reduction(d)
-      self._check_all_vectorized(out, vcount)
+  def _get_inputs(self, dtypes_mode:str, vcounts:list[int]=[1,2,16,19], vals:list[float|int]=[1.3, -2, 194]):
+    _dtypes: tuple(dtypes) = TRANSCENDENTAL_SUPPORTED_DTYPES if dtypes_mode == 'floats' else (dtypes.int64, dtypes.int32, dtypes.int16)
+    for vcount in vcounts:
+      for val in vals:
+        for dtype in _dtypes:
+          d = UOp.const(dtype.vec(vcount), val)
+          yield d, vcount
 
-  @given(strat.floats(width=16, allow_subnormal=False), strat.integers(1, 255), strat.sampled_from(TRANSCENDENTAL_SUPPORTED_DTYPES))
-  def test_vectorized_cody_waite_reduction(self, val, vcount, dtype):
-    # test cody_waite_reduction preserves vectorization
-    with Context(DEVECTORIZE=0):
-      d = UOp.const(dtype.vec(vcount), val)
-      out = cody_waite_reduction(d)
-      self._check_all_vectorized(out, vcount)
+  def test_preserves_vectorization(self):
+    # verify that when given a vectorized (or scalar) input, the function returns a vectorized (or scalar) output
+    for (d, vcount), (e, _) in zip(self._get_inputs(dtypes_mode='floats'), self._get_inputs(dtypes_mode='ints')):
+      self._check_all_uops_vectorized(rintk(d), vcount)
+      self._check_all_uops_vectorized(ilogb2k(d), vcount)
+      self._check_all_uops_vectorized(frexp(d), vcount)
+      self._check_all_uops_vectorized(sin_poly(d), vcount)
+      self._check_all_uops_vectorized(xsin(d), vcount)
+      self._check_all_uops_vectorized(xexp2(d), vcount)
+      self._check_all_uops_vectorized(xlog2(d), vcount)
+      self._check_all_uops_vectorized(cody_waite_reduction(d), vcount)
+      self._check_all_uops_vectorized(payne_hanek_reduction(d), vcount)
 
-  def test_xlog2_vectorized(self):
-    with Context(DEVECTORIZE=0):
-      for vcount in [1,2,4]:
-        for val in [1.3, -2, 194]:
-          for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-            ic(vcount, val, dtype)
-            d = UOp.const(dtype.vec(vcount), val)
-            out = xlog2(d)
-            self._check_all_vectorized(out, vcount)
+      self._check_all_uops_vectorized(ldexp3k(d, d), vcount)
+      self._check_all_uops_vectorized(sin_poly_large(d, d), vcount)
+      self._check_all_uops_vectorized(sin_poly_small(d, d), vcount)
+      self._check_all_uops_vectorized(xpow(d, d), vcount)
+
+      self._check_all_uops_vectorized(ldexp2k(d, e), vcount)
+      self._check_all_uops_vectorized(pow2if(e, d.dtype), vcount)
+      self._check_all_uops_vectorized(trig_poly(d, [0.1], [0.1]), vcount)
+      self._check_all_uops_vectorized(_lazy_map_numbers(d, d.const_like(0.0), d.const_like(0.0), d.const_like(0.0), d), vcount)
+      # to get integer value from e, use e._eval((e.dtype,), int) instead of int(e) because e is vectorized
+      self._check_all_uops_vectorized(shl(d, e._eval((e.dtype,), int)), vcount)
+      self._check_all_uops_vectorized(shr(d, e._eval((e.dtype,), int)), vcount)
+      self._check_all_uops_vectorized(_ifand(d, e._eval((e.dtype,), int)), vcount)
 
 if __name__ == '__main__':
   unittest.main()
