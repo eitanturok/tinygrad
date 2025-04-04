@@ -146,7 +146,7 @@ def cody_waite_reduction(d:UOp) -> tuple[UOp, UOp]:
   return _reduce_d(d, quadrant.cast(d.dtype)), quadrant.cast_vec(dtypes.int32)
 
 # *** approximate sine on small angle. ***
-def trig_poly(d:UOp, coeff32: list[float], coeff64: list[float]) -> UOp: return d * (polyN(d*d, coeff64) if d.dtype == dtypes.float64 else polyN(d*d, coeff32))
+def trig_poly(d:UOp, coeff32: list[float], coeff64: list[float]) -> UOp: return d * (polyN(d*d, coeff64) if d.dtype.scalar() == dtypes.float64 else polyN(d*d, coeff32))
 # approximate sine on [-pi/2, pi/2]
 def sin_poly(d:UOp) -> UOp:
   return trig_poly(d, [2.6083159809786593541503e-06, -0.0001981069071916863322258, 0.00833307858556509017944336, -0.166666597127914428710938, 1.0],
