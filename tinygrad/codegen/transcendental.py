@@ -25,7 +25,7 @@ def rintk(d:UOp) -> UOp:
 
 def pow2if(q:UOp, float_dtype:DType) -> UOp:
   """cast(2^q, float_dtype) where q is any integer in the range of [-126, 127]"""
-  out_dtype = {dtypes.int64: dtypes.float64, dtypes.int32: dtypes.float32, dtypes.int16: float_dtype}[q.dtype.scalar()].vec(q.dtype.vcount)
+  out_dtype = {dtypes.int64: dtypes.float64, dtypes.int32: dtypes.float32, dtypes.int16: float_dtype.scalar()}[q.dtype.scalar()].vec(q.dtype.vcount)
   return shl(q + exponent_bias(out_dtype), mantissa_bits(out_dtype)).bitcast(out_dtype)
 
 def ilogb2k(d:UOp) -> UOp:
