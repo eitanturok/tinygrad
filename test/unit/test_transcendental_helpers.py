@@ -80,21 +80,13 @@ class TestVectorizedTranscendetalFunctions(unittest.TestCase):
     if isinstance(u, UOp): assert u.dtype.vcount == vcount, f'expected {vcount=} but got {u.dtype.vcount=} for UOp {u=}'
     [self._check_all_uops_vectorized(x, vcount) for x in (u if isinstance(u, tuple) else u.src)]
 
-  def _get_inputs(self, dtype_mode:str, vcounts:list[int]=[1,2,16,19], vals:list[float|int]=[1.3, -2, 194]) -> tuple[UOp, DType]:
-    _dtypes: tuple(dtypes) = TRANSCENDENTAL_SUPPORTED_DTYPES if dtype_mode == 'floats' else (dtypes.int64, dtypes.int32, dtypes.int16)
-    for vcount in vcounts:
-      for val in vals:
-        for _dtype in _dtypes:
+  def _get_inputs(self, mode:str='floats') -> tuple[UOp, DType]:
+    for val in [-2,1.3,194]:
+      for vcount in [1,2,4,19]:
+        for _dtype in TRANSCENDENTAL_SUPPORTED_DTYPES if mode == 'floats' else (dtypes.int64, dtypes.int32, dtypes.int16):
           dtype: DType = _dtype.vec(vcount)
           d = UOp.const(dtype, val)
           yield d, dtype
-
-
-  def test_preserves_vec(self):
-    for d, dtype in self._get_inputs(dtype_mode='floats'):
-      self._check_all_uops_vectorized(payne_hanek_reduction(d), dtype.vcount)
-      self._check_all_uops_vectorized(cody_waite_reduction(d), dtype.vcount)
-      self._check_all_uops_vectorized(xpow(d, d), dtype.vcount)
 
   def test_preserves_vectorization(self):
     # verify that when given a vectorized (or scalar) input, the function returns a vectorized (or scalar) output
