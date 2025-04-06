@@ -89,6 +89,13 @@ class TestVectorizedTranscendetalFunctions(unittest.TestCase):
           d = UOp.const(dtype, val)
           yield d, dtype
 
+
+  def test_preserves_vec(self):
+    for d, dtype in self._get_inputs(dtype_mode='floats'):
+      self._check_all_uops_vectorized(payne_hanek_reduction(d), dtype.vcount)
+      self._check_all_uops_vectorized(cody_waite_reduction(d), dtype.vcount)
+      self._check_all_uops_vectorized(xpow(d, d), dtype.vcount)
+
   def test_preserves_vectorization(self):
     # verify that when given a vectorized (or scalar) input, the function returns a vectorized (or scalar) output
     for (d, dtype), (e, _) in zip(self._get_inputs(dtype_mode='floats'), self._get_inputs(dtype_mode='ints')):
@@ -117,12 +124,24 @@ class TestVectorizedTranscendetalFunctions(unittest.TestCase):
       self._check_all_uops_vectorized(_ifand(d, e._eval((e.dtype,), int)), dtype.vcount)
 
   # def test_dtype_cases(self):
-  #   # test trig_poly case
-  #   in32, in64 = UOp.const(dtypes.float32.vec(5), 0.1), UOp.const(dtypes.float64.vec(5), 0.1)
-  #   out32, out64 = sin_poly(in32), sin_poly(in64)
-  #   ic(in32, in64, out32, out64)
-  #   eval32, eval64 = eval_uop(out32, [(dtypes.float32.vec(5), [in32])]), eval_uop(out64, [(dtypes.float64.vec(5), [in64])])
-  #   ic(eval32, eval64)
+  #   in16 = UOp.const(dtypes.float16.vec(5), 0.1)
+  #   in32 = UOp.const(dtypes.float32.vec(5), 0.1)
+  #   in64 = UOp.const(dtypes.float64.vec(5), 0.1)
+
+  #   # test trig_poly
+  #   coeff32, coeff64 = [0.1], [0.2]
+  #   out32, out64 = trig_poly(in32, coeff32, coeff64), trig_poly(in64, coeff32, coeff64)
+  #   assert out32 != out64
+  #   out16, out32, out64 = cody_waite_reduction(in16), cody_waite_reduction(in32), cody_waite_reduction(in64)
+  #   ic(out16, out32, out64)
+
+  def test_dtype_cases(self):
+    in_scalar, in_vec = UOp.const(dtypes.float64, 0.1), UOp.const(dtypes.float64.vec(2), 0.1)
+
+    coeff32, coeff64 = [0.1], [0.2]
+    assert eval_uop(trig_poly(in_scalar, coeff32, coeff64)), eval_uop(trig_poly(in_vec, coeff32, coeff64))
+
+
 
 if __name__ == '__main__':
   unittest.main()

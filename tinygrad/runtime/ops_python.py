@@ -67,10 +67,10 @@ class PythonProgram:
         assert dtype is not None, f"{uop} is missing a dtype"
         dl[i] = dtype
         if uop in {Ops.DEFINE_GLOBAL, Ops.DEFINE_LOCAL}:
-          assert dtype.fmt is not None and isinstance(dtype, PtrDType)
-          if TYPE_CHECKING or sys.version_info < (3, 12): assert dtype.fmt != "e"
+          assert dtype.scalar().fmt is not None and isinstance(dtype, PtrDType)
+          if TYPE_CHECKING or sys.version_info < (3, 12): assert dtype.scalar().fmt != "e"
           buf = memoryview(bytearray(dtype.size*dtype.itemsize)) if uop is Ops.DEFINE_LOCAL else pbufs.pop(0)
-          ul[i] = [buf.cast(dtype.fmt)] * warp_size
+          ul[i] = [buf.cast(dtype.scalar().fmt)] * warp_size
         elif uop is Ops.DEFINE_VAR:
           ul[i] = [pvals.pop(0)] * warp_size
         elif uop is Ops.SPECIAL:

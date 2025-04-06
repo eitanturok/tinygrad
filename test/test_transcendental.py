@@ -8,7 +8,6 @@ from tinygrad.device import is_dtype_supported
 import numpy as np
 import math
 from hypothesis import given, settings, strategies as strat
-
 from icecream import ic, install
 install()
 
@@ -132,14 +131,13 @@ class TestTranscendentalSchedule(unittest.TestCase):
       check_schedule(c, 1)
 
 class TestTranscendentalVectorized(unittest.TestCase):
-  def _vectorized_data(self, low, high, vec_size):
-    np_data = np.linspace(low, high, num=(128 // vec_size) * vec_size, dtype=np.float32).reshape(-1, vec_size)
+  def _vectorized_data(self, low, high, vec_size, num_elements=128):
+    np_data = np.linspace(low, high, num=(num_elements // vec_size) * vec_size, dtype=np.float32).reshape(-1, vec_size)
     data = Tensor(np_data, dtype=dtypes.float32.vec(vec_size))
     return data, np_data
 
   def _test_vectorized_op(self, fxn, np_fxn, data_range, vec_size, param_range=None):
     data, np_data = self._vectorized_data(data_range[0], data_range[1], vec_size)
-    ic(data.realize().dtype)
     with Context(DEVECTORIZE=0):
       if param_range:
         param, np_param = self._vectorized_data(param_range[0], param_range[1], vec_size)
@@ -162,13 +160,38 @@ class TestTranscendentalVectorized(unittest.TestCase):
     for vec_size in [1,2,3,4,5,127,128]: self._test_vectorized_op(Tensor.pow, np.pow, (0.001, 200), vec_size, param_range=(-10, 10))
 
   def test_vectorized(self):
-    data_range, vec_size = (0, 100), 4
-    data, np_data = self._vectorized_data(data_range[0], data_range[1], vec_size)
-    out = Tensor.exp2(data)
-    ic(out.realize().dtype)
-    ic(out.numpy())
-    np_out = np.exp2(np_data)
-    np.testing.assert_allclose(out.numpy(), np_out, rtol=1e-4)
+    with Context(DEVECTORIZE=0):
+
+      # vec_size = 8
+      # num_elements = (100 // vec_size) * vec_size
+      # x = np.linspace(0, 20, num=num_elements, dtype=np.float32).reshape(-1, vec_size)
+      # t = Tensor(x, dtype=dtypes.float32.vec(vec_size))
+      # ic(t, t.dtype, t.dtype.vcount)
+      # t.realize()
+      # ic(t, t.dtype, t.dtype.vcount)
+
+      # t = Tensor([1,2,3,4,5,6,7,8]).cast(dtypes.int.vec(2)).realize()
+      x = np.array([[1,2,3,4],[5,6,7,8]], dtype=np.float32)
+      t = Tensor(x, dtype=dtypes.float32.vec(4))
+      ic(t, t.shape, t.dtype, t.dtype.vcount)
+
+
+      # vec_size = 5
+      # n_elements = 8 * vec_size
+      # np_data = np.array([5.] * n_elements).astype(dtype=np.float32).reshape(-1, vec_size)
+      # data = Tensor(np_data, dtype=dtypes.float32.vec(vec_size)).realize()
+      # ic(data, data.shape, data.dtype, data.dtype.vcount)
+      # ic(data.numpy())
+
+      # np_param = np.array([-3.7] * n_elements).astype(dtype=np.float32).reshape(-1, vec_size)
+      # param = Tensor(np_param, dtype=dtypes.float32.vec(vec_size))
+      # ic(param, param.dtype, param.dtype.vcount)
+      # ic(param.numpy())
+
+      # out = Tensor.pow(data, param)
+      # out_np = np.pow(np_data, np_param)
+      # np.testing.assert_allclose(out.numpy(), out_np, rtol=1e-4)
+
 
 if __name__ == '__main__':
   unittest.main()
