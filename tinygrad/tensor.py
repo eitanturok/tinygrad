@@ -631,6 +631,22 @@ class Tensor(SimpleMathTrait):
     if steps == 1: return Tensor([start], dtype=dtype, **kwargs)
     return (start + Tensor.arange(steps, **kwargs) * ((stop - start) / (steps - 1))).cast(dtype)
 
+  def unfold(self, dim:int, size:int, step:int):
+    """
+    Returns a tensor with all slices of size `size` from `self` in the dimension `dimension`.
+    If sizedim is the size of dimension dimension for self, the size of dimension dimension in
+    the returned tensor will be (sizedim - size) / step + 1.
+    """
+    dim = self._resolve_dim(dim)
+    if size < 0: raise ValueError(f'size must be >= 0 but got {size=}')
+    if step <= 0: raise ValueError(f'step must be >0 but got {step=}')
+    if size > self.shape[dim]: raise ValueError(f'maximum size for tensor at dimension {dim} is {self.shape[dim]} but size is {size}')
+
+    dim_size = self.shape[dim]
+    num_slices = (dim_size - size) // step + 1
+    slices = [self[(slice(None),)*dim + (slice(i*step, i*step+size),)] for i in range(num_slices)]
+    return Tensor.stack(*slices, dim=dim)
+
   @staticmethod
   def eye(n:int, m:int|None=None, **kwargs) -> Tensor:
     """
