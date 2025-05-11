@@ -1,4 +1,4 @@
-import ctypes, platform
+import functools, ctypes, platform
 from tinygrad.device import Compiled, Compiler, MallocAllocator, CPUProgram
 from tinygrad.helpers import OSX, getenv, capstone_flatdump, DEBUG
 from tinygrad.renderer.llvmir import LLVMRenderer
@@ -19,7 +19,7 @@ class LLVMCompiler(Compiler):
 
     triple = {'AArch64': b'aarch64-none-unknown-elf', 'X86': b'x86_64-none-unknown-elf', 'AMDGPU': b'amdgcn-amd-amdhsa'}[self.target_arch]
     target = expect(llvm.LLVMGetTargetFromTriple(triple, ctypes.pointer(tgt:=llvm.LLVMTargetRef()), err:=cerr()), err, tgt)
-    if DEBUG >= 2: print(f"LLVM init for {processor!r} with {feats!r}")
+    if DEBUG >= 3: print(f"LLVM init for {processor!r} with {feats!r}")
     self.target_machine = llvm.LLVMCreateTargetMachine(target, triple, processor.encode(), feats.encode(),
                                                        llvm.LLVMCodeGenLevelDefault, llvm.LLVMRelocPIC, llvm.LLVMCodeModelDefault)
 
@@ -60,4 +60,5 @@ class HostLLVMCompiler(LLVMCompiler):
 
 class LLVMDevice(Compiled):
   def __init__(self, device:str):
-    super().__init__(device, MallocAllocator, LLVMRenderer(), HostLLVMCompiler(), CPUProgram)
+    from tinygrad.runtime.graph.cpu import LLVMGraph
+    super().__init__(device, MallocAllocator, LLVMRenderer(), HostLLVMCompiler(), CPUProgram, functools.partial(LLVMGraph, self))
