@@ -281,6 +281,18 @@ class TestOps(unittest.TestCase):
                                expected=(RuntimeError, ValueError))
     self.helper_test_exception([], lambda: torch.linspace(1, 2, -1), lambda: Tensor.linspace(1, 2, -1), expected=(RuntimeError, ValueError))
 
+  def test_unfold(self):
+    helper_test_op([(8,)], lambda x: x.unfold(0, 2, 1), lambda x: x.unfold(0, 2, 1))
+    helper_test_op([(8,)], lambda x: x.unfold(0, 2, 2), lambda x: x.unfold(0, 2, 2))
+    helper_test_op([(8,)], lambda x: x.unfold(0, 7, 3), lambda x: x.unfold(0, 7, 3))
+    helper_test_op([(3,3,3)], lambda x: x.unfold(-1, 2, 8), lambda x: x.unfold(-1, 2, 8))
+
+  def test_unfold_exceptions(self):
+    self.helper_test_exception([(8,)], lambda x: x.unfold(0, 9, 3), lambda x: x.unfold(0, 9, 3), expected=RuntimeError)
+    self.helper_test_exception([(8,)], lambda x: x.unfold(1, 8, 3), lambda x: x.unfold(1, 8, 3), expected=IndexError)
+    self.helper_test_exception([(8,)], lambda x: x.unfold(0, -1, 3), lambda x: x.unfold(0, -1, 3), expected=RuntimeError)
+    self.helper_test_exception([(8,)], lambda x: x.unfold(0, 1, -1), lambda x: x.unfold(0, 1, -1), expected=RuntimeError)
+
   def test_sum_fake(self):
     helper_test_op([(256, 1)], lambda x: x.sum(axis=1))
 
