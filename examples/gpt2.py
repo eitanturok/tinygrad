@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os, argparse, contextlib
-from typing import Optional, Union
+from typing import Optional, Union, Callable
 with contextlib.suppress(ImportError): import tiktoken
 from tinygrad import Tensor, TinyJit, Device, GlobalCounters, Variable, dtypes
 from tinygrad.uop.ops import UOp
@@ -73,10 +73,10 @@ class Transformer:
     self.h = [TransformerBlock(dim, n_heads, norm_eps, max_context) for _ in range(n_layers)]
     self.ln_f = LayerNorm(dim, norm_eps)
     self.lm_head = Linear(dim, vocab_size, bias=False)
-    self.forward_jit = TinyJit(self.forward) if jit else None
+    self.call_jit = TinyJit(self.call) if jit else None
     self.max_context = max_context
 
-  def forward(self, tokens:Union[Tensor,UOp], start_pos:Union[Variable,int], temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float):
+  def forward(self, tokens:Union[Tensor,UOp], start_pos:Union[Variable,int]):
     if not hasattr(self, 'allpos'): self.allpos = Tensor.arange(0, MAX_CONTEXT).reshape(1, -1).realize()
 
     seqlen = tokens.shape[1]
@@ -98,19 +98,18 @@ class Transformer:
       logits = Tensor.ones((logits.shape[0], self.vocab_size), dtype=logits.dtype, device=logits.device)
     else:
       logits = logits[:, -1, :]
+    return logits
 
-    # if temperature < 1e-6:
-    #   ret = logits.argmax(-1)
-    # else:
-    #   ret = (logits / temperature).softmax().multinomial()
-    # return ret.flatten().realize()
+  def call(self, tokens:Tensor, start_pos:int, temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
+    logits = self.forward(tokens, start_pos)
+    logits_processor(logits)
     return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p).kernelize()
 
-  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0):
+  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor=lambda x: x):
     # TODO: better way to handle the first call v.s. the rest?
-    if tokens.shape[0:2] == (1,1) and self.forward_jit is not None and start_pos != 0:
-      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p)
-    return self.forward(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p)
+    if tokens.shape[0:2] == (1,1) and self.call_jit is not None and start_pos != 0:
+      return self.call_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
+    return self.call(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
 
 VOCAB_SIZE = 50257
 MODEL_PARAMS = {
