@@ -8,6 +8,7 @@ from tinygrad.helpers import Timing, DEBUG, JIT, getenv, fetch, colored, trange
 from tinygrad.nn import Embedding, Linear, LayerNorm
 from tinygrad.nn.state import gguf_load, torch_load, load_state_dict, get_state_dict
 from extra.bench_log import BenchEvent, WallTimeEvent
+from extra.models.llama import sample
 
 MAX_CONTEXT = getenv("MAX_CONTEXT", 1024)
 HALF = getenv("HALF")
@@ -75,7 +76,7 @@ class Transformer:
     self.forward_jit = TinyJit(self.forward) if jit else None
     self.max_context = max_context
 
-  def forward(self, tokens:Union[Tensor,UOp], start_pos:Union[Variable,int], temperature:float=0.0):
+  def forward(self, tokens:Union[Tensor,UOp], start_pos:Union[Variable,int], temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float):
     if not hasattr(self, 'allpos'): self.allpos = Tensor.arange(0, MAX_CONTEXT).reshape(1, -1).realize()
 
     seqlen = tokens.shape[1]
@@ -98,17 +99,18 @@ class Transformer:
     else:
       logits = logits[:, -1, :]
 
-    if temperature < 1e-6:
-      ret = logits.argmax(-1)
-    else:
-      ret = (logits / temperature).softmax().multinomial()
-    return ret.flatten().realize()
+    # if temperature < 1e-6:
+    #   ret = logits.argmax(-1)
+    # else:
+    #   ret = (logits / temperature).softmax().multinomial()
+    # return ret.flatten().realize()
+    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p).kernelize()
 
-  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0):
+  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0):
     # TODO: better way to handle the first call v.s. the rest?
     if tokens.shape[0:2] == (1,1) and self.forward_jit is not None and start_pos != 0:
-      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature)
-    return self.forward(tokens, start_pos, temperature)
+      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p)
+    return self.forward(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p)
 
 VOCAB_SIZE = 50257
 MODEL_PARAMS = {
