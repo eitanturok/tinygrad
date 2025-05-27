@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Set, Union
 
 import interegular
+from interegular import Pattern
 from interegular.fsm import FSM
 from outlines_core.fsm.regex import create_fsm_index_tokenizer, make_byte_level_fsm, make_deterministic_fsm
 
@@ -21,32 +22,31 @@ class Write:
 
 Instruction = Union[Write, Generate]
 
-def create_states_mapping_from_fsm(fsm: FSM, tokenizer, frozen_tokens: list[str] = []) -> tuple[Any, Set[int], Set[int]]:
-    """Create the variables related to the mapping between states and tokens from an FSM."""
-    byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True, frozen_tokens=frozen_tokens)
-    regex_fsm, _ = make_deterministic_fsm(byte_fsm)
-    states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
-    return states_to_token_maps, empty_token_ids, regex_fsm.finals
 
 class RegexGuide:
     """Guide to generate text in the language of a regular expression."""
-
     initial_state = 0
 
     def __init__(
-        self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None, create_states_mapping=create_states_mapping_from_fsm,
-        device=None, regex_parser: Callable[[str], interegular.Pattern] = interegular.parse_pattern, frozen_tokens: list[str] = []):
+        self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None,
+        device=None, regex_parser: Callable[[str],Pattern]=interegular.parse_pattern, frozen_tokens:list[str]=[]):
         assert not (regex_string is None and fsm is None), "choose only one of regex_string or fsm"
         if regex_string is not None: assert regex_parser is not None, f"need regex_parser with regex_string"
 
         if regex_string is not None: fsm = regex_parser(regex_string).to_fsm()
-
-        states_to_token_maps, empty_token_ids, _ = create_states_mapping(fsm, tokenizer, frozen_tokens=frozen_tokens)
+        states_to_token_maps, empty_token_ids, _ = self.create_states_mapping_from_fsm(fsm, tokenizer, frozen_tokens=frozen_tokens)
         self.states_to_token_maps = states_to_token_maps
         self.empty_token_ids = empty_token_ids
 
         self.eos_tensor = Tensor([tokenizer.eos_token_id], device=device)
         self.initial_state = states_to_token_maps.get_initial_state()
+
+    def create_states_mapping_from_fsm(self, fsm:FSM, tokenizer, frozen_tokens: list[str] = []) -> tuple[Any, Set[int], Set[int]]:
+        """Create the variables related to the mapping between states and tokens from an FSM."""
+        byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True, frozen_tokens=frozen_tokens)
+        regex_fsm, _ = make_deterministic_fsm(byte_fsm)
+        states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
+        return states_to_token_maps, empty_token_ids, regex_fsm.finals
 
     def get_next_instruction(self, state: int) -> Instruction:
         """Return the next instruction for guided generation.
@@ -75,16 +75,7 @@ class RegexGuide:
     def copy(self): return self
 
 
-class OutlinesLogitsProcessor:
-    def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
-        raise NotImplementedError()
-    def __call__(self, input_ids:Tensor, logits:Tensor) -> Tensor:
-        assert dtypes.is_int(input_ids.dtype), f"input_ids must be integers but {input_ids.dtype=}"
-        assert logits.shape[:-1] == input_ids.shape[:-1], f"logits and input_ids must have the same dimensions except for the last"
-        assert logits.ndim in [1, 2], f'logits can only have 1 or 2 dims but {logits.ndim=}'
-        return self.process_logits(input_ids, logits) if logits.ndim == 2 else self.process_logits(input_ids, logits).squeeze(0)
-
-class GuideLogitsProcessor(OutlinesLogitsProcessor):
+class GuideLogitsProcessor:
     tokenizer: "Tokenizer"
     guide: Any
     _guide_states: dict[int, Any]
@@ -95,7 +86,13 @@ class GuideLogitsProcessor(OutlinesLogitsProcessor):
         self._guide_states = {hash(tuple([])): self.guide.initial_state}
         self._seq_start_idx = None
 
-    def process_logits(self, input_ids: Tensor, logits: Tensor) -> Tensor:
+    def __call__(self, input_ids:Tensor, logits:Tensor) -> Tensor:
+        assert dtypes.is_int(input_ids.dtype), f"input_ids must be integers but {input_ids.dtype=}"
+        assert logits.shape[:-1] == input_ids.shape[:-1], f"logits and input_ids must have the same dims except for the last dim: {logits.shape=} {input_ids.shape=}"
+        assert logits.ndim in [1, 2], f'logits can only have 1 or 2 dims but {logits.ndim=}'
+        return self.process_logits(input_ids, logits) if logits.ndim == 2 else self.process_logits(input_ids.unsqueeze(0), logits.unsqueeze(0)).squeeze(0)
+
+    def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
         """Use the Guide to bias the logits before sampling the next token."""
         if self._seq_start_idx is None: self._seq_start_idx = len(input_ids[0])
         gen_ids = input_ids[:, self._seq_start_idx:]

@@ -1,5 +1,5 @@
-from typing import Union, Optional, Any
-import collections
+from typing import Union, Optional, Any, Callable
+import collections, functools
 from tinygrad import Tensor, Variable, TinyJit, dtypes, nn, Device
 from tinygrad.helpers import getenv, DEBUG
 
@@ -114,10 +114,16 @@ class TransformerBlock:
     return (h + self.feed_forward(self.ffn_norm(h))).contiguous()
 
 # standard openai sampling
-def sample(logits: Tensor, temp: float, k: int, p: float, af: float, ap: float):
+def sample(logits:Tensor, temp:float, k:int, p:float, af:float, ap:float, logits_processor:Callable):
   assert logits.ndim == 1, "only works on 1d tensors"
   assert 0 <= p <= 1, "p must be between 0 and 1"
   assert 0 <= k <= logits.numel(), "k must be between 0 and numel"
+
+  # mask logits for structured generation
+  ic(logits_processor)
+  ic(logits.shape, (logits == float("-inf")).sum().numpy())
+  logits = logits_processor(logits)
+  ic(logits.shape, (logits == float("-inf")).sum().numpy())
 
   # if temperature is very low just use argmax
   if temp < 1e-6: return logits.argmax()
@@ -175,7 +181,7 @@ class Transformer:
     self.freqs_cis = precompute_freqs_cis(dim // n_heads, self.max_context * 2, rope_theta).contiguous()
     self.forward_jit = TinyJit(self.forward) if jit else None
 
-  def forward(self, tokens:Tensor, start_pos:Union[Variable,int], temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float):
+  def forward(self, tokens:Tensor, start_pos:Union[Variable,int], temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
     _bsz, seqlen = tokens.shape
     h = self.tok_embeddings(tokens)
 
@@ -186,13 +192,14 @@ class Transformer:
     for layer in self.layers: h = layer(h, start_pos, freqs_cis, mask)
     logits = self.output(self.norm(h)).float()[:, -1, :]
 
-    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p).kernelize()
+    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor).kernelize()
 
-  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0):
+  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0,
+              top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor:Callable=lambda x:x):
     # TODO: better way to handle the first call v.s. the rest?
     if tokens.shape[0:2] == (1,1) and self.forward_jit is not None and start_pos != 0:
-      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p)
-    return self.forward(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p)
+      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
+    return self.forward(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
 
 # *** helpers ***
 

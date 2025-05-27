@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, argparse, contextlib
+import os, argparse, contextlib, functools
 from typing import Optional, Union, Callable
 with contextlib.suppress(ImportError): import tiktoken
 from tinygrad import Tensor, TinyJit, Device, GlobalCounters, Variable, dtypes
@@ -73,10 +73,10 @@ class Transformer:
     self.h = [TransformerBlock(dim, n_heads, norm_eps, max_context) for _ in range(n_layers)]
     self.ln_f = LayerNorm(dim, norm_eps)
     self.lm_head = Linear(dim, vocab_size, bias=False)
-    self.call_jit = TinyJit(self.call) if jit else None
+    self.forward_jit = TinyJit(self.forward) if jit else None
     self.max_context = max_context
 
-  def forward(self, tokens:Union[Tensor,UOp], start_pos:Union[Variable,int]):
+  def forward(self, tokens:Tensor, start_pos:Union[Variable,int], temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
     if not hasattr(self, 'allpos'): self.allpos = Tensor.arange(0, MAX_CONTEXT).reshape(1, -1).realize()
 
     seqlen = tokens.shape[1]
@@ -98,18 +98,13 @@ class Transformer:
       logits = Tensor.ones((logits.shape[0], self.vocab_size), dtype=logits.dtype, device=logits.device)
     else:
       logits = logits[:, -1, :]
-    return logits
 
-  def call(self, input_ids:Tensor, start_pos:int, temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
-    logits = self.forward(input_ids, start_pos)
-    logits = logits_processor(input_ids, logits)
-    return [sample(logits[i].flatten(), temperature, top_k, top_p, alpha_f, alpha_p).kernelize() for i in range(logits.shape[0])]
+    return [sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, functools.partial(logits_processor, tokens.flatten())).kernelize()]
 
-  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor=lambda x: x):
-    # TODO: better way to handle the first call v.s. the rest?
-    if tokens.shape[0:2] == (1,1) and self.call_jit is not None and start_pos != 0:
-      return self.call_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
-    return self.call(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
+  def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor:Callable=lambda x: x):
+    if tokens.shape[0:2] == (1,1) and self.forward_jit is not None and start_pos != 0:
+      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
+    return self.forward(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
 
 VOCAB_SIZE = 50257
 MODEL_PARAMS = {
