@@ -1,6 +1,88 @@
 from typing import Any
 from tinygrad import Tensor, dtypes
-from outlines.fsm.guide import CFGGuide, Guide, RegexGuide
+# from outlines.fsm.guide import CFGGuide, Guide, RegexGuide
+
+
+from dataclasses import dataclass
+from typing import Any, Callable, List, Optional, Protocol, Set, Tuple, Union
+
+import interegular
+from interegular.fsm import FSM
+import torch
+from outlines_core.fsm.regex import (
+    create_fsm_index_tokenizer,
+    make_byte_level_fsm,
+    make_deterministic_fsm,
+)
+
+from outlines_core_rs import Index
+
+
+@dataclass(frozen=True)
+class Generate:
+    tokens: Optional[List[int]|Tensor]
+
+@dataclass(frozen=True)
+class Write:
+    tokens: List[int]|Tensor
+
+Instruction = Union[Write, Generate]
+
+def create_states_mapping_from_fsm(fsm: FSM, tokenizer, frozen_tokens: List[str] = []) -> Tuple[Index, Set[int], Set[int]]:
+    """Create the variables related to the mapping between states and tokens from an FSM."""
+    byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True, frozen_tokens=frozen_tokens)
+    regex_fsm, _ = make_deterministic_fsm(byte_fsm)
+    states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
+    return states_to_token_maps, empty_token_ids, int(regex_fsm.finals)
+
+class RegexGuide:
+    """Guide to generate text in the language of a regular expression."""
+
+    initial_state = 0
+
+    def __init__(
+        self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None, create_states_mapping=create_states_mapping_from_fsm, device=None,
+        regex_parser: Callable[[str], interegular.Pattern] = interegular.parse_pattern, frozen_tokens: List[str] = []):
+        assert regex_string is not None and fsm is not None, "choose only one of regex_str or fsm"
+
+        if regex_string is not None: fsm = regex_parser(regex_string).to_fsm()
+        states_to_token_maps, empty_token_ids, _ = create_states_mapping(fsm, tokenizer, frozen_tokens=frozen_tokens)
+
+        self.states_to_token_maps = states_to_token_maps
+        self.empty_token_ids = empty_token_ids
+        self.eos_tensor = Tensor([tokenizer.eos_token_id], device=device)
+        self.initial_state = states_to_token_maps.get_initial_state()
+
+    def get_next_instruction(self, state: int) -> Instruction:
+        """Return the next instruction for guided generation.
+
+        The initialization of the guide builds an index which maps FSM states to a
+        map from authorized tokens to the state in which the guide needs to move
+        if said token is generated. Therefore the authorized tokens at the
+        current state are the keys of the map returned by the value of the index
+        for current state.
+
+        If the current state is not contained in the end this means that we are
+        in a final state of the guide. We only authorize EOS tokens in the final
+        state.
+        """
+        if state == -1: return Write(self.eos_tensor)
+        next_tokens_mask = self.states_to_token_maps.get_allowed_tokens(state)
+        return Write(self.eos_tensor) if next_tokens_mask is None else Generate(Tensor(next_tokens_mask))
+
+    def get_next_state(self, state: int, token_id: int) -> int:
+        if state == -1: return -1
+        next_state = self.states_to_token_maps.get_next_state(state, token_id)
+        return -1 if next_state is None else next_state
+
+    def is_final_state(self, state: int) -> bool: return state == -1 or self.states_to_token_maps.is_final_state(state)
+    def get_index_dict(self): return self.states_to_token_maps.get_transitions()
+    def copy(self): return self
+
+
+
+
+
 
 class OutlinesLogitsProcessor:
     def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
