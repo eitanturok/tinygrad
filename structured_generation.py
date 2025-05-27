@@ -1,30 +1,27 @@
-from typing import Any
+from typing import Any, Type
 from tinygrad import Tensor, dtypes
-# from outlines.fsm.guide import CFGGuide, Guide, RegexGuide
 
+from outlines.fsm.json_schema import convert_json_schema_to_str
+from outlines_core.fsm.json_schema import build_regex_from_schema
 
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Protocol, Set, Tuple, Union
+from typing import Any, Callable, Optional, Set, Union
 
 import interegular
 from interegular.fsm import FSM
-from outlines_core.fsm.regex import (
-    create_fsm_index_tokenizer,
-    make_byte_level_fsm,
-    make_deterministic_fsm,
-)
+from outlines_core.fsm.regex import create_fsm_index_tokenizer, make_byte_level_fsm, make_deterministic_fsm
 
 @dataclass(frozen=True)
 class Generate:
-    tokens: Optional[List[int]|Tensor]
+    tokens: Optional[list[int]|Tensor]
 
 @dataclass(frozen=True)
 class Write:
-    tokens: List[int]|Tensor
+    tokens: list[int]|Tensor
 
 Instruction = Union[Write, Generate]
 
-def create_states_mapping_from_fsm(fsm: FSM, tokenizer, frozen_tokens: List[str] = []) -> Tuple[Any, Set[int], Set[int]]:
+def create_states_mapping_from_fsm(fsm: FSM, tokenizer, frozen_tokens: list[str] = []) -> tuple[Any, Set[int], Set[int]]:
     """Create the variables related to the mapping between states and tokens from an FSM."""
     byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True, frozen_tokens=frozen_tokens)
     regex_fsm, _ = make_deterministic_fsm(byte_fsm)
@@ -38,15 +35,16 @@ class RegexGuide:
 
     def __init__(
         self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None, create_states_mapping=create_states_mapping_from_fsm,
-        device=None, regex_parser: Callable[[str], interegular.Pattern] = interegular.parse_pattern, frozen_tokens: List[str] = []):
-        ic(regex_string, fsm)
-        assert not (regex_string is None and fsm is None), "choose only one of regex_str or fsm"
+        device=None, regex_parser: Callable[[str], interegular.Pattern] = interegular.parse_pattern, frozen_tokens: list[str] = []):
+        assert not (regex_string is None and fsm is None), "choose only one of regex_string or fsm"
+        if regex_string is not None: assert regex_parser is not None, f"need regex_parser with regex_string"
 
         if regex_string is not None: fsm = regex_parser(regex_string).to_fsm()
-        states_to_token_maps, empty_token_ids, _ = create_states_mapping(fsm, tokenizer, frozen_tokens=frozen_tokens)
 
+        states_to_token_maps, empty_token_ids, _ = create_states_mapping(fsm, tokenizer, frozen_tokens=frozen_tokens)
         self.states_to_token_maps = states_to_token_maps
         self.empty_token_ids = empty_token_ids
+
         self.eos_tensor = Tensor([tokenizer.eos_token_id], device=device)
         self.initial_state = states_to_token_maps.get_initial_state()
 
@@ -77,10 +75,9 @@ class RegexGuide:
     def copy(self): return self
 
 
-
 class OutlinesLogitsProcessor:
     def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
-        raise NotImplementedError
+        raise NotImplementedError()
     def __call__(self, input_ids:Tensor, logits:Tensor) -> Tensor:
         assert dtypes.is_int(input_ids.dtype), f"input_ids must be integers but {input_ids.dtype=}"
         assert logits.shape[:-1] == input_ids.shape[:-1], f"logits and input_ids must have the same dimensions except for the last"
@@ -100,42 +97,42 @@ class GuideLogitsProcessor(OutlinesLogitsProcessor):
 
     def process_logits(self, input_ids: Tensor, logits: Tensor) -> Tensor:
         """Use the Guide to bias the logits before sampling the next token."""
-        if self._seq_start_idx is None:
-            self._seq_start_idx = len(input_ids[0])
+        if self._seq_start_idx is None: self._seq_start_idx = len(input_ids[0])
+        gen_ids = input_ids[:, self._seq_start_idx:]
 
         sequence_states: list[int] = []  # vector of states corresponding to `input_ids`
-
         for i in range(input_ids.shape[0]):
-            seq_ids = input_ids[i]
-            gen_ids = seq_ids[self._seq_start_idx :]
-            curr_state_key = hash(tuple(gen_ids.tolist()))
+            seq = gen_ids[i]
+            curr_key = hash(tuple(seq.tolist()))
 
-            if curr_state_key not in self._guide_states:
-                prev_state = self._guide_states[hash(tuple(gen_ids[:-1].tolist()))]
-                curr_state = self.guide.get_next_state(prev_state, gen_ids[-1].item())
-                self._guide_states[curr_state_key] = curr_state
+            if curr_key not in self._guide_states:
+                prev_key = hash(tuple(seq[:-1].tolist()))
+                self._guide_states[curr_key] = self.guide.get_next_state(self._guide_states[prev_key], gen_ids[-1].item())
 
-            sequence_states.append(self._guide_states[curr_state_key])
+            sequence_states.append(self._guide_states[curr_key])
 
-        allowed_tokens_batch: list[Tensor] = []
-        batch_indices: list[Tensor] = []
-        for i, guide_state in enumerate(sequence_states):
-            allowed_tokens = self.guide.get_next_instruction(guide_state).tokens
-            allowed_tokens_batch.append(allowed_tokens)
-            batch_indices.append(Tensor.full_like(allowed_tokens, i))  # Store batch index for each allowed token
+        data = [(self.guide.get_next_instruction(state).tokens, i) for i, state in enumerate(sequence_states)]
+        all_tokens = Tensor.cat(*[tokens for tokens, _ in data]).to(logits.device)
+        all_indices = Tensor.cat(*[Tensor.full((len(tokens),), idx, dtype=dtypes.int32) for tokens, idx in data]).to(logits.device)
 
-        allowed_tokens_concat = allowed_tokens_batch[0].cat(*allowed_tokens_batch[1:]).to(logits.device)
-        batch_indices_concat = batch_indices[0].cat(*batch_indices[1:]).to(logits.device)
-
+        # todo: remove contiguous
         mask = Tensor.ones_like(logits, dtype=dtypes.bool).contiguous()
-        mask[batch_indices_concat, allowed_tokens_concat] = False
-        logits = logits.masked_fill(mask, float("-inf"))
-
-        return logits
+        mask[all_indices, all_tokens] = False
+        return logits.masked_fill(mask, float("-inf"))
 
 class RegexLogitsProcessor(GuideLogitsProcessor):
     """Bias generation based on a regular expression."""
 
     def __init__(self, regex_string: str, tokenizer: "Tokenizer", device=None):
+        guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
+        super().__init__(tokenizer=tokenizer, guide=guide)
+
+class JSONLogitsProcessor(GuideLogitsProcessor):
+    """Bias generation based on a JSON schema."""
+    from pydantic import BaseModel
+
+    def __init__(self, schema: Union[dict, Type[BaseModel], str], tokenizer: "Tokenizer", whitespace_pattern: Optional[str] = None, device=None):
+        schema_str = convert_json_schema_to_str(json_schema=schema)
+        regex_string = build_regex_from_schema(schema_str, whitespace_pattern)
         guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
         super().__init__(tokenizer=tokenizer, guide=guide)
