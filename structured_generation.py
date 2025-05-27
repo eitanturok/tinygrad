@@ -8,15 +8,11 @@ from typing import Any, Callable, List, Optional, Protocol, Set, Tuple, Union
 
 import interegular
 from interegular.fsm import FSM
-import torch
 from outlines_core.fsm.regex import (
     create_fsm_index_tokenizer,
     make_byte_level_fsm,
     make_deterministic_fsm,
 )
-
-from outlines_core_rs import Index
-
 
 @dataclass(frozen=True)
 class Generate:
@@ -28,12 +24,12 @@ class Write:
 
 Instruction = Union[Write, Generate]
 
-def create_states_mapping_from_fsm(fsm: FSM, tokenizer, frozen_tokens: List[str] = []) -> Tuple[Index, Set[int], Set[int]]:
+def create_states_mapping_from_fsm(fsm: FSM, tokenizer, frozen_tokens: List[str] = []) -> Tuple[Any, Set[int], Set[int]]:
     """Create the variables related to the mapping between states and tokens from an FSM."""
     byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True, frozen_tokens=frozen_tokens)
     regex_fsm, _ = make_deterministic_fsm(byte_fsm)
     states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
-    return states_to_token_maps, empty_token_ids, int(regex_fsm.finals)
+    return states_to_token_maps, empty_token_ids, regex_fsm.finals
 
 class RegexGuide:
     """Guide to generate text in the language of a regular expression."""
@@ -41,9 +37,10 @@ class RegexGuide:
     initial_state = 0
 
     def __init__(
-        self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None, create_states_mapping=create_states_mapping_from_fsm, device=None,
-        regex_parser: Callable[[str], interegular.Pattern] = interegular.parse_pattern, frozen_tokens: List[str] = []):
-        assert regex_string is not None and fsm is not None, "choose only one of regex_str or fsm"
+        self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None, create_states_mapping=create_states_mapping_from_fsm,
+        device=None, regex_parser: Callable[[str], interegular.Pattern] = interegular.parse_pattern, frozen_tokens: List[str] = []):
+        ic(regex_string, fsm)
+        assert not (regex_string is None and fsm is None), "choose only one of regex_str or fsm"
 
         if regex_string is not None: fsm = regex_parser(regex_string).to_fsm()
         states_to_token_maps, empty_token_ids, _ = create_states_mapping(fsm, tokenizer, frozen_tokens=frozen_tokens)
@@ -81,9 +78,6 @@ class RegexGuide:
 
 
 
-
-
-
 class OutlinesLogitsProcessor:
     def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
         raise NotImplementedError
@@ -95,10 +89,10 @@ class OutlinesLogitsProcessor:
 
 class GuideLogitsProcessor(OutlinesLogitsProcessor):
     tokenizer: "Tokenizer"
-    guide: Guide
+    guide: Any
     _guide_states: dict[int, Any]
     _seq_start_idx: int|None
-    def __init__(self, tokenizer: "Tokenizer", guide: Guide):
+    def __init__(self, tokenizer: "Tokenizer", guide: Any):
         self.tokenizer = tokenizer
         self.guide = guide
         self._guide_states = {hash(tuple([])): self.guide.initial_state}
@@ -126,8 +120,7 @@ class GuideLogitsProcessor(OutlinesLogitsProcessor):
         allowed_tokens_batch: list[Tensor] = []
         batch_indices: list[Tensor] = []
         for i, guide_state in enumerate(sequence_states):
-            # todo: get_next_instruction should return Tensor directly so don't need to cast torch.Tensor -> tinygrad.Tensor
-            allowed_tokens = Tensor(self.guide.get_next_instruction(guide_state).tokens.numpy())
+            allowed_tokens = self.guide.get_next_instruction(guide_state).tokens
             allowed_tokens_batch.append(allowed_tokens)
             batch_indices.append(Tensor.full_like(allowed_tokens, i))  # Store batch index for each allowed token
 
@@ -143,6 +136,6 @@ class GuideLogitsProcessor(OutlinesLogitsProcessor):
 class RegexLogitsProcessor(GuideLogitsProcessor):
     """Bias generation based on a regular expression."""
 
-    def __init__(self, regex_string: str, tokenizer: "Tokenizer"):
-        guide = RegexGuide.from_regex(regex_string, tokenizer)
+    def __init__(self, regex_string: str, tokenizer: "Tokenizer", device=None):
+        guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
         super().__init__(tokenizer=tokenizer, guide=guide)

@@ -20,15 +20,16 @@ def generate(model, tokenizer, prompt, temperature=0.0, max_length=10, batch_siz
 def main():
     prompt = "The secret to the universe is"
     model_size = "gpt2"
+    device = Device.DEFAULT
     seed = 42
 
-    print(f"using {Device.DEFAULT} backend")
+    print(f"using {device} backend")
     Tensor.no_grad = True
     Tensor.manual_seed(seed)
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    logits_processor = RegexLogitsProcessor("\d{2}", tokenizer)
+    logits_processor = RegexLogitsProcessor("\d{2}", tokenizer, device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)
     ic(output)
 
