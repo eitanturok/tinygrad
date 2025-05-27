@@ -134,7 +134,6 @@ class TikTokenTokenizer:
   def decode(self, token_ids:list[int], **kwargs) -> str:
     return self.tokenizer.decode(token_ids, **kwargs)
   def convert_token_to_string(self, token:str) -> str:
-    print(token)
     return token
 
 
