@@ -6,10 +6,9 @@ class OutlinesLogitsProcessor:
     def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
         raise NotImplementedError
     def __call__(self, input_ids:Tensor, logits:Tensor) -> Tensor:
-        ic(type(input_ids), type(logits), input_ids.shape, logits.shape)
-        assert dtypes.is_int(input_ids.dtype), f"input_ids must be integers but have type {input_ids.dtype}"
+        assert dtypes.is_int(input_ids.dtype), f"input_ids must be integers but {input_ids.dtype=}"
         assert logits.shape[:-1] == input_ids.shape[:-1], f"logits and input_ids must have the same dimensions except for the last"
-        assert logits.ndim in [1, 2], f'logits can only have 1 or 2 dimensions but have {logits.ndim}'
+        assert logits.ndim in [1, 2], f'logits can only have 1 or 2 dims but {logits.ndim=}'
         return self.process_logits(input_ids, logits) if logits.ndim == 2 else self.process_logits(input_ids, logits).squeeze(0)
 
 class GuideLogitsProcessor(OutlinesLogitsProcessor):
