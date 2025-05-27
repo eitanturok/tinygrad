@@ -120,10 +120,7 @@ def sample(logits:Tensor, temp:float, k:int, p:float, af:float, ap:float, logits
   assert 0 <= k <= logits.numel(), "k must be between 0 and numel"
 
   # mask logits for structured generation
-  ic(logits_processor)
-  ic(logits.shape, (logits == float("-inf")).sum().numpy())
   logits = logits_processor(logits)
-  ic(logits.shape, (logits == float("-inf")).sum().numpy())
 
   # if temperature is very low just use argmax
   if temp < 1e-6: return logits.argmax()
@@ -192,7 +189,7 @@ class Transformer:
     for layer in self.layers: h = layer(h, start_pos, freqs_cis, mask)
     logits = self.output(self.norm(h)).float()[:, -1, :]
 
-    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor).kernelize()
+    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, functools.partial(logits_processor, tokens.flatten()).kernelize()
 
   def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0,
               top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor:Callable=lambda x:x):
