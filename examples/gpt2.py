@@ -103,7 +103,10 @@ class Transformer:
   def call(self, input_ids:Tensor, start_pos:int, temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
     logits = self.forward(input_ids, start_pos)
     logits = logits_processor(input_ids, logits)
-    return [sample(logits[i].flatten(), temperature, top_k, top_p, alpha_f, alpha_p).kernelize() for i in range(logits.shape[0])]
+    ic(logits.shape)
+    ret = [sample(ic(logits[i].flatten()), temperature, top_k, top_p, alpha_f, alpha_p).kernelize() for i in range(logits.shape[0])]
+    ic(ret)
+    return ret
 
   def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor=lambda x: x):
     # TODO: better way to handle the first call v.s. the rest?
@@ -128,8 +131,8 @@ class TikTokenTokenizer:
     self.special_tokens = self.tokenizer._special_tokens
   def encode(self, prompt:str, **kwargs) -> list:
     return self.tokenizer.encode(prompt, **kwargs)
-  def decode(self, token_ids:list[int]) -> str:
-    return self.tokenizer.decode(token_ids, skip_special_tokens=True)
+  def decode(self, token_ids:list[int], **kwargs) -> str:
+    return self.tokenizer.decode(token_ids, **kwargs)
   def convert_token_to_string(self, token:str) -> str:
     print(token)
     return token
