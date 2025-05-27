@@ -1,12 +1,14 @@
-from lm_eval.base import BaseLM
+# from lm_eval.base import BaseLM
+from lm_eval.api.model import TemplateLM, LM
 from lm_eval import evaluator, tasks
 import torch, json, argparse
+from pathlib import Path
 
+from tinygrad import Device, nn, Tensor
 from examples.llama import LLaMa
-from tinygrad.tensor import Tensor
-from tinygrad import Device
+from examples.gpt2 import GPT2
 
-class LLaMaAdaptor(BaseLM):
+class LLaMaAdaptor(LM):
   def __init__(
     self,
     model_size="7B",
@@ -28,13 +30,14 @@ class LLaMaAdaptor(BaseLM):
     self.temperature = temperature
     self._device = device
 
-    assert isinstance(model_gen, int)
+    assert isinstance(model_gen, int) or isinstance(model_gen, str)
     assert isinstance(model_size, str)
     assert isinstance(batch_size, int)
     assert isinstance(checkpoint_path, str)
     assert isinstance(tokenizer_path, str)
 
-    self.llama = LLaMa.build(checkpoint_path, tokenizer_path, model_gen, model_size, quantize)
+    self.llama = GPT2.build()
+    # self.llama = LLaMa.build(checkpoint_path, tokenizer_path, model_gen, model_size, quantize)
 
   @classmethod
   def create_from_arg_string(cls, arg_string, additional_config=None):
@@ -76,12 +79,31 @@ class LLaMaAdaptor(BaseLM):
     continuations = []
     for request in requests:
       prompt, until = request[0], request[1]['until']
-      output = self.llama.greedy_until(prompt, until, max_length=128, temperature=0.0)
+      output = self.llama.generate(self, prompt, max_length=128, temperature=0.0)
+      # output = self.llama.greedy_until(prompt, until, max_length=128, temperature=0.0)
       continuations.append(output[len(prompt):])
     return continuations
 
   def _model_generate(self, context, max_length, eos_token_id):
     raise NotImplementedError()
+
+  def loglikelihood(self, requests, disable_tqdm: bool = False):
+    raise NotImplementedError("No support for logits.")
+
+  def loglikelihood_rolling(self, requests, disable_tqdm: bool = False):
+    raise NotImplementedError("No support for logits.")
+
+  def generate_until(self, requests, disable_tqdm: bool = False) -> list[str]:
+    raise NotImplementedError("No support for logits.")
+
+def fetch_weights(total_num_weights:int=4) -> dict[str, Tensor]:
+  weights: dict[str, Tensor] = {}
+  subdir = Path("weights/LLaMA")
+  for i in range(1, total_num_weights+1):
+    filename = Path(f"model-{i:05d}-of-{total_num_weights:05d}.safetensors")
+    weight = Tensor.from_url(f"https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/resolve/main/{filename}", name=filename, subdir=subdir).to(Device.default)
+    weights |= nn.state.safe_load(weight)
+  return weights
 
 if __name__ == '__main__':
   print(f"using {Device.DEFAULT} backend")
@@ -96,7 +118,15 @@ if __name__ == '__main__':
   parser.add_argument('--tokenizer', type=str, default="./weights/LLaMa/tokenizer.model", help="Location of the tokenizer")
   args = parser.parse_args()
 
-  # run eval and exit
+  # # run eval and exit
+  # fetch_weights(4)
+  # args.size = "tiny"
+  # args.gen = "1B"
+  # LLAMA_SUFFIX = {"1": "", "2": "-2", "3": "-3", "code": "-code", "tiny": "-tiny"}[args.gen]
+  # MODEL_PATH = args.model or Path(__file__).parents[1] / f"weights/LLaMA{LLAMA_SUFFIX}/{args.size}"
+  # TOKENIZER_PATH = (MODEL_PATH if MODEL_PATH.is_dir() else MODEL_PATH.parent) / "tokenizer.model"
+
+
   adaptor = LLaMaAdaptor(model_gen=args.gen, model_size=args.size, quantize=args.quantize,
                          checkpoint_path=args.weights, tokenizer_path=args.tokenizer, device="cpu")
   results = evaluator.evaluate(adaptor, tasks.get_task_dict(args.eval.split(",")), False, 0, args.limit)

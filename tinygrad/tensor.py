@@ -452,7 +452,7 @@ class Tensor(MathTrait):
     return r
 
   @staticmethod
-  def from_url(url:str, gunzip:bool=False, **kwargs) -> Tensor:
+  def from_url(url:str, fetch_kwargs:dict, **kwargs) -> Tensor:
     """
     Create a Tensor from a URL.
 
@@ -462,7 +462,7 @@ class Tensor(MathTrait):
 
     THe `gunzip` flag will gzip extract the resource and return an extracted Tensor.
     """
-    return Tensor(fetch(url, gunzip=gunzip), **kwargs)
+    return Tensor(fetch(url, **fetch_kwargs), **kwargs)
 
   _seed: int = int(time.time())
   _device_seeds: dict[str, Tensor] = {}
