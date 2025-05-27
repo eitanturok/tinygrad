@@ -114,6 +114,7 @@ class GuideLogitsProcessor:
 
         # todo: remove contiguous
         mask = Tensor.ones_like(logits, dtype=dtypes.bool).contiguous()
+        ic(mask, mask.numpy(), all_indices, all_indices.numpy(), all_tokens, all_tokens.numpy())
         mask[all_indices, all_tokens] = False
         return logits.masked_fill(mask, float("-inf"))
 
@@ -124,12 +125,12 @@ class RegexLogitsProcessor(GuideLogitsProcessor):
         guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
         super().__init__(tokenizer=tokenizer, guide=guide)
 
-class JSONLogitsProcessor(GuideLogitsProcessor):
-    """Bias generation based on a JSON schema."""
-    from pydantic import BaseModel
+# class JSONLogitsProcessor(GuideLogitsProcessor):
+#     """Bias generation based on a JSON schema."""
+#     from pydantic import BaseModel
 
-    def __init__(self, schema: Union[dict, Type[BaseModel], str], tokenizer: "Tokenizer", whitespace_pattern: Optional[str] = None, device=None):
-        schema_str = convert_json_schema_to_str(json_schema=schema)
-        regex_string = build_regex_from_schema(schema_str, whitespace_pattern)
-        guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
-        super().__init__(tokenizer=tokenizer, guide=guide)
+#     def __init__(self, schema: Union[dict, Type[BaseModel], str], tokenizer: "Tokenizer", whitespace_pattern: Optional[str] = None, device=None):
+#         schema_str = convert_json_schema_to_str(json_schema=schema)
+#         regex_string = build_regex_from_schema(schema_str, whitespace_pattern)
+#         guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
+#         super().__init__(tokenizer=tokenizer, guide=guide)

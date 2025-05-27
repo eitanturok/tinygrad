@@ -6,7 +6,7 @@ from structured_generation import RegexLogitsProcessor
 from icecream import install
 install()
 
-def generate(model, tokenizer, prompt, temperature=0.0, max_length=10, batch_size:int=1, logits_processor:Callable=lambda x:x):
+def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x:x):
     prompt_tokens = tokenizer.encode(prompt, allowed_special={"<|endoftext|>"})
     toks = [prompt_tokens[:] for _ in range(batch_size)]
     assert (max_new_tokens :=  max_length - len(toks[0])) < getenv("MAX_CONTEXT", 1024), f"{max_new_tokens=} must not exceed the context"
@@ -29,7 +29,9 @@ def main():
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    logits_processor = RegexLogitsProcessor("\d{2}", tokenizer, device)
+    # logits_processor = RegexLogitsProcessor("\d{2}", tokenizer, device)
+    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)
     ic(output)
 
