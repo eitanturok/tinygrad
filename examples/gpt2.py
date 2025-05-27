@@ -100,12 +100,10 @@ class Transformer:
       logits = logits[:, -1, :]
     return logits
 
-  def call(self, tokens:Tensor, start_pos:int, temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
-    logits = self.forward(tokens, start_pos)
-    tokens = []
-    for i in range(logits.shape[0]):
-      tokens.append(sample(logits_processor(logits[i].flatten()), temperature, top_k, top_p, alpha_f, alpha_p).kernelize())
-    return tokens
+  def call(self, input_ids:Tensor, start_pos:int, temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
+    logits = self.forward(input_ids, start_pos)
+    logits = logits_processor(input_ids, logits)
+    return [sample(logits[i].flatten(), temperature, top_k, top_p, alpha_f, alpha_p).kernelize() for i in range(logits.shape[0])]
 
   def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor=lambda x: x):
     # TODO: better way to handle the first call v.s. the rest?
@@ -121,10 +119,27 @@ MODEL_PARAMS = {
   'gpt2-xl':      dict(n_layers=48, n_heads=25, dim=1600, norm_eps=1e-5, vocab_size=VOCAB_SIZE),  # 1558M params
 }
 
+class TikTokenTokenizer:
+  def __init__(self, tokenizer):
+    self.tokenizer = tokenizer
+    self.vocabulary = self.tokenizer._mergeable_ranks
+    self.eos_token = "<|endoftext|>"
+    self.eos_token_id = 50256
+    self.special_tokens = self.tokenizer._special_tokens
+  def encode(self, prompt:str, **kwargs) -> list:
+    return self.tokenizer.encode(prompt, **kwargs)
+  def decode(self, token_ids:list[int]) -> str:
+    return self.tokenizer.decode(token_ids, skip_special_tokens=True)
+  def convert_token_to_string(self, token:str) -> str:
+    print(token)
+    return token
+
+
 class GPT2:
   @staticmethod
   def build(model_size="gpt2"):
-    tokenizer = tiktoken.get_encoding("gpt2")
+    tokenizer = TikTokenTokenizer(tiktoken.get_encoding("gpt2"))
+    # tokenizer = AutoTokenizer()
 
     model = Transformer(**MODEL_PARAMS[model_size], max_context=MAX_CONTEXT, jit=bool(JIT))
     weights = torch_load(fetch(f'https://huggingface.co/{model_size}/resolve/main/pytorch_model.bin'))
