@@ -14,6 +14,7 @@ def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_siz
     for _ in trange(max_new_tokens):
         new_toks = model(Tensor([x[start_pos:] for x in toks]), start_pos, temperature, logits_processor=logits_processor)
         for i,x in enumerate(new_toks): toks[i].append(x.item())
+        ic([tokenizer.decode(x) for x in toks])
         start_pos = len(toks[0]) - 1
     return [tokenizer.decode(x) for x in toks]
 
@@ -29,9 +30,9 @@ def main():
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    # logits_processor = RegexLogitsProcessor("\d{2}", tokenizer, device)
-    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    logits_processor = RegexLogitsProcessor(r'[ab]{3}', tokenizer, device)
+    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)
     ic(output)
 

@@ -1,15 +1,14 @@
-from typing import Any, Type
-from tinygrad import Tensor, dtypes
-
-from outlines.fsm.json_schema import convert_json_schema_to_str
-from outlines_core.fsm.json_schema import build_regex_from_schema
-
+import inspect, json, warnings
+from typing import Any, Callable, Optional, Set, Union, Type
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Set, Union
+
+from tinygrad import Tensor, dtypes
+from pydantic import BaseModel, create_model
 
 import interegular
 from interegular import Pattern
 from interegular.fsm import FSM
+from outlines_core.fsm.json_schema import build_regex_from_schema
 from outlines_core.fsm.regex import create_fsm_index_tokenizer, make_byte_level_fsm, make_deterministic_fsm
 
 @dataclass(frozen=True)
@@ -61,6 +60,7 @@ class RegexGuide:
         in a final state of the guide. We only authorize EOS tokens in the final
         state.
         """
+        ic(state)
         if state == -1: return Write(self.eos_tensor)
         next_tokens_mask = self.states_to_token_maps.get_allowed_tokens(state)
         return Write(self.eos_tensor) if next_tokens_mask is None else Generate(Tensor(next_tokens_mask))
@@ -114,9 +114,11 @@ class GuideLogitsProcessor:
 
         # todo: remove contiguous
         mask = Tensor.ones_like(logits, dtype=dtypes.bool).contiguous()
-        ic(mask, mask.numpy(), all_indices, all_indices.numpy(), all_tokens, all_tokens.numpy())
+        # ic(mask, mask.numpy(), all_indices, all_indices.numpy(), all_tokens, all_tokens.numpy())
         mask[all_indices, all_tokens] = False
         return logits.masked_fill(mask, float("-inf"))
+
+# **** RegexLogitsProcessor ****
 
 class RegexLogitsProcessor(GuideLogitsProcessor):
     """Bias generation based on a regular expression."""
@@ -125,12 +127,19 @@ class RegexLogitsProcessor(GuideLogitsProcessor):
         guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
         super().__init__(tokenizer=tokenizer, guide=guide)
 
-# class JSONLogitsProcessor(GuideLogitsProcessor):
-#     """Bias generation based on a JSON schema."""
-#     from pydantic import BaseModel
+# **** JSONLogitsProcessor ****
 
-#     def __init__(self, schema: Union[dict, Type[BaseModel], str], tokenizer: "Tokenizer", whitespace_pattern: Optional[str] = None, device=None):
-#         schema_str = convert_json_schema_to_str(json_schema=schema)
-#         regex_string = build_regex_from_schema(schema_str, whitespace_pattern)
-#         guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
-#         super().__init__(tokenizer=tokenizer, guide=guide)
+def convert_json_schema_to_str(json_schema:Union[dict, str, Type[BaseModel]]) -> str:
+    """Convert a JSON schema to a string."""
+    if isinstance(json_schema, dict): return json.dumps(json_schema)
+    elif isinstance(json_schema, str): return json_schema
+    elif issubclass(json_schema, BaseModel): return json.dumps(json_schema.model_json_schema())
+    else: raise ValueError(f"Cannot parse schema {json_schema}. Only supports dictionary, string, or Pydantic class.")
+
+class JSONLogitsProcessor(GuideLogitsProcessor):
+    """Bias generation based on a JSON schema."""
+    def __init__(self, schema: Union[dict, Type[BaseModel], str], tokenizer: "Tokenizer", whitespace_pattern: Optional[str] = None, device=None):
+        schema_str = convert_json_schema_to_str(json_schema=schema)
+        regex_string = build_regex_from_schema(schema_str, whitespace_pattern)
+        guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
+        super().__init__(tokenizer=tokenizer, guide=guide)

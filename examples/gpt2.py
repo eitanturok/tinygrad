@@ -121,6 +121,7 @@ class TikTokenTokenizer:
     self.eos_token = "<|endoftext|>"
     self.eos_token_id = 50256
     self.special_tokens = self.tokenizer._special_tokens
+    # todo: add self.pad_token_id
   def encode(self, prompt:str, **kwargs) -> list:
     return self.tokenizer.encode(prompt, **kwargs)
   def decode(self, token_ids:list[int], **kwargs) -> str:
@@ -128,12 +129,13 @@ class TikTokenTokenizer:
   def convert_token_to_string(self, token:str) -> str:
     return token
 
-
 class GPT2:
   @staticmethod
   def build(model_size="gpt2"):
     tokenizer = TikTokenTokenizer(tiktoken.get_encoding("gpt2"))
-    # tokenizer = AutoTokenizer()
+    # from transformers import AutoTokenizer
+    # from outlines.models.transformers import TransformerTokenizer
+    # tokenizer = TransformerTokenizer(AutoTokenizer.from_pretrained("gpt2"))
 
     model = Transformer(**MODEL_PARAMS[model_size], max_context=MAX_CONTEXT, jit=bool(JIT))
     weights = torch_load(fetch(f'https://huggingface.co/{model_size}/resolve/main/pytorch_model.bin'))
