@@ -72,7 +72,6 @@ class LLaMaAdaptor(LM):
     return self.llama.tokenizer.decode(tokens)
 
   def _model_call(self, inps):
-    Tensor.no_grad = True
     return torch.Tensor(self.llama.model(Tensor(inps.numpy()), 0).numpy())
 
   def greedy_until(self, requests):
