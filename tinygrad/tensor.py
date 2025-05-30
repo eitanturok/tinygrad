@@ -773,6 +773,14 @@ class Tensor(MathTrait):
     return Tensor.uniform(*shape, low=low, high=high, dtype=dtype, **kwargs)
 
   @staticmethod
+  def randperm(self, n:int):
+    """
+    Returns a random permutation of integers from 0 to n - 1.
+    """
+    assert isinstance(n, int)
+    self.arange(n).permute()
+
+  @staticmethod
   def normal(*shape, mean=0.0, std=1.0, requires_grad:bool|None=None, **kwargs) -> Tensor:
     """
     Creates a tensor with the given shape, filled with random values from a normal distribution with the given `mean` and standard deviation `std`.

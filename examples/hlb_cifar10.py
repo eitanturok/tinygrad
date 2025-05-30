@@ -201,11 +201,12 @@ def train_cifar():
     idx_y = Tensor.arange(H, dtype=dtypes.int32).reshape((1,1,H,1))
     return (idx_x >= low_x) * (idx_x < (low_x + mask_size)) * (idx_y >= low_y) * (idx_y < (low_y + mask_size))
 
-  def random_crop(X:Tensor, crop_size=32):
+  def random_crop(X:Tensor, crop_size:int=32) -> Tensor:
+    c = X.shape[1]
     mask = make_square_mask(X.shape, crop_size)
-    mask = mask.expand((-1,3,-1,-1))
-    X_cropped = Tensor(X.numpy()[mask.numpy()])
-    return X_cropped.reshape((-1, 3, crop_size, crop_size))
+    mask = mask.expand((-1, c, -1, -1))
+    X_cropped = X.masked_select(mask).reshape((-1, c, crop_size, crop_size))
+    return X_cropped
 
   def cutmix(X:Tensor, Y:Tensor, mask_size=3):
     # fill the square with randomly selected images from the same batch
