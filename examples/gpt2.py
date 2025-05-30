@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, argparse, contextlib
+import os, argparse, contextlib, types
 from typing import Optional, Union
 with contextlib.suppress(ImportError): import tiktoken
 from tinygrad import Tensor, TinyJit, Device, GlobalCounters, Variable, dtypes
@@ -124,6 +124,7 @@ class GPT2:
   @staticmethod
   def build(model_size="gpt2"):
     tokenizer = tiktoken.get_encoding("gpt2")
+    tokenizer.bos_id = types.MethodType(lambda self: tokenizer.eot_token, tokenizer)
 
     model = Transformer(**MODEL_PARAMS[model_size])
     weights = torch_load(fetch(f'https://huggingface.co/{model_size}/resolve/main/pytorch_model.bin'))

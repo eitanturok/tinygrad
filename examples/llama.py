@@ -5,9 +5,9 @@
 
 from pathlib import Path
 from typing import List, Optional
-import argparse, json
+import argparse, json, os
 from tinygrad import Tensor, Device, GlobalCounters, nn
-from tinygrad.helpers import Context, Timing, Profiling, DEBUG, JIT, getenv, colored
+from tinygrad.helpers import Context, Timing, Profiling, DEBUG, JIT, getenv, colored, fetch
 from tinygrad.nn.state import safe_load, torch_load, load_state_dict, get_parameters
 from extra.models.llama import Transformer, convert_from_huggingface, fix_bf16
 from sentencepiece import SentencePieceProcessor
@@ -191,7 +191,8 @@ def load(fn:str):
 
 class LLaMa:
   @staticmethod
-  def build(model_path, tokenizer_path, model_gen="1", model_size="7B", quantize=None, device=None):
+  def build(model_path:Path, tokenizer_path:Path, model_gen:str="1", model_size:str="7B", quantize:Optional[str]=None, device=None):
+    ic(model_path, tokenizer_path, quantize)
     params = MODEL_PARAMS[model_gen][model_size]
     tokenizer = MODEL_PARAMS[model_gen]['tokenizer'](model_file=str(tokenizer_path))
     assert tokenizer.vocab_size() == params["args"]["vocab_size"], f"{tokenizer.vocab_size()=} not equal to {params['args']['vocab_size']}"
