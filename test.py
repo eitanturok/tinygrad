@@ -1,6 +1,6 @@
 from typing import Callable
 from tinygrad import Tensor, Device
-from tinygrad.helpers import trange, getenv
+from tinygrad.helpers import getenv
 from examples.gpt2 import GPT2
 from structured_generation import RegexLogitsProcessor
 from icecream import install
@@ -11,7 +11,7 @@ def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_siz
     toks = [prompt_tokens[:] for _ in range(batch_size)]
     assert (max_new_tokens :=  max_length - len(toks[0])) < getenv("MAX_CONTEXT", 1024), f"{max_new_tokens=} must not exceed the context"
     start_pos = 0
-    for _ in trange(max_new_tokens):
+    for _ in range(max_new_tokens):
         new_toks = model(Tensor([x[start_pos:] for x in toks]), start_pos, temperature, logits_processor=logits_processor)
         if all([tokenizer.eos_token_id == x.item() for x in [new_toks]]): break
         for i,x in enumerate([new_toks]): toks[i].append(x.item())
@@ -25,14 +25,12 @@ def main():
     seed = 42
 
     print(f"using {device} backend")
-    Tensor.no_grad = True
     Tensor.manual_seed(seed)
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    logits_processor = RegexLogitsProcessor(r'[0-9]{20}', tokenizer, device)
-    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)
     ic(output)
 
