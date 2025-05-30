@@ -13,6 +13,7 @@ def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_siz
     start_pos = 0
     for _ in trange(max_new_tokens):
         new_toks = model(Tensor([x[start_pos:] for x in toks]), start_pos, temperature, logits_processor=logits_processor)
+        if all([tokenizer.eos_token_id == x.item() for x in new_toks]): break
         for i,x in enumerate(new_toks): toks[i].append(x.item())
         ic([tokenizer.decode(x) for x in toks])
         start_pos = len(toks[0]) - 1
