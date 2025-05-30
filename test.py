@@ -13,14 +13,13 @@ def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_siz
     start_pos = 0
     for _ in trange(max_new_tokens):
         new_toks = model(Tensor([x[start_pos:] for x in toks]), start_pos, temperature, logits_processor=logits_processor)
-        if all([tokenizer.eos_token_id == x.item() for x in new_toks]): break
-        for i,x in enumerate(new_toks): toks[i].append(x.item())
-        ic([tokenizer.decode(x) for x in toks])
+        if all([tokenizer.eos_token_id == x.item() for x in [new_toks]]): break
+        for i,x in enumerate([new_toks]): toks[i].append(x.item())
         start_pos = len(toks[0]) - 1
     return [tokenizer.decode(x) for x in toks]
 
 def main():
-    prompt = "The secret to the universe is"
+    prompt = "The secret to the universe is "
     model_size = "gpt2"
     device = Device.DEFAULT
     seed = 42
@@ -31,7 +30,7 @@ def main():
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    logits_processor = RegexLogitsProcessor(r'[ab]{3}', tokenizer, device)
+    logits_processor = RegexLogitsProcessor(r'[abcdefghi]{3}', tokenizer, device)
     # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
     # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)

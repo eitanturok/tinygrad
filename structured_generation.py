@@ -92,9 +92,8 @@ class LogitsProcessor:
         assert logits.ndim in [1, 2], f'logits can only have 1 or 2 dims but {logits.ndim=}'
         return self.process_logits(input_ids, logits) if logits.ndim == 2 else self.process_logits(input_ids.unsqueeze(0), logits.unsqueeze(0)).squeeze(0)
 
-    def make_states(self, input_ids:Tensor, gen_ids:Tensor) -> list[int]:
-        fsm_states: list[int] = []  # vector of states corresponding to `input_ids`
-        bs = input_ids.shape[0]
+    def make_states(self, bs:int, gen_ids:Tensor) -> list[int]:
+        fsm_states: list[int] = []  # vector of states corresponding to gen_ids
         for i in range(bs):
             seq = gen_ids[i]
             curr_key = hash(tuple(seq.tolist()))
@@ -111,24 +110,14 @@ class LogitsProcessor:
         # first time, input_ids is the prompt_tokens
         # after that, input_ids always contains the previously generated token with shape (bs, 1)
         # we condition on ALL generated tokens via caching but don't see that explicitly
+        bs = input_ids.shape[0]
         if self.gen_ids is None:
-            self.gen_ids = [[] for x in range(input_ids.shape[0])]
+            self.gen_ids = [[] for x in range(bs)]
         else:
             for i,x in enumerate(input_ids): self.gen_ids[i].append(x.item())
 
-        ic(input_ids.shape, self.gen_ids)
-
-        # get FSM states for the input_ids
-        # if self._seq_start_idx is None: self._seq_start_idx = len(input_ids[0])
-        # gen_ids = input_ids[:, self._seq_start_idx:]
-        # ic(input_ids.numpy(), self._seq_start_idx, gen_ids.numpy())
-        fsm_states = self.make_states(input_ids, Tensor(self.gen_ids))
-        ic(fsm_states)
-        ic(self._guide_states)
-
-        # if all([self.guide.is_final_state(state) for state in fsm_states]):
-        #     # only return true on eos token
-        #     print('hi')
+        # get FSM states for the generated ids
+        fsm_states = self.make_states(bs, Tensor(self.gen_ids))
 
         # create the mask
         data = [(self.guide.get_next_instruction(state).tokens, i) for i, state in enumerate(fsm_states)]

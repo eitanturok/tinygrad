@@ -99,7 +99,7 @@ class Transformer:
     else:
       logits = logits[:, -1, :]
 
-    return [sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, functools.partial(logits_processor, tokens.flatten())).kernelize()]
+    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, functools.partial(logits_processor, tokens.flatten())).kernelize()
 
   def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0, top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor:Callable=lambda x: x):
     if tokens.shape[0:2] == (1,1) and self.forward_jit is not None and start_pos != 0:
