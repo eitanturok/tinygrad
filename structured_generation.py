@@ -27,22 +27,22 @@ class RegexGuide:
     initial_state = 0
 
     def __init__(self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None,
-        device=None, regex_parser: Callable[[str],Pattern]=interegular.parse_pattern, frozen_tokens:list[str]=[]):
-
-        assert not (regex_string is None and fsm is None), "choose only one of regex_string or fsm"
+        device=None, regex_parser: Callable[[str],Pattern]=interegular.parse_pattern):
+        assert not (fsm is not None and regex_string is not None), "either fsm or regex_str must not be None"
+        assert not (fsm is None and regex_string is None), "can not have both fsm or regex_str being None"
         if regex_string is not None: assert regex_parser is not None, f"need regex_parser with regex_string"
 
-        self.fsm = fsm if regex_string is None else regex_parser(regex_string).to_fsm()
-        states_to_token_maps, empty_token_ids, _ = self.create_states_mapping_from_fsm(self.fsm, tokenizer, frozen_tokens=frozen_tokens)
+        fsm = fsm if regex_string is None else regex_parser(regex_string).to_fsm()
+        states_to_token_maps, empty_token_ids, _ = self.create_states_mapping_from_fsm(fsm, tokenizer)
         self.states_to_token_maps = states_to_token_maps
         self.empty_token_ids = empty_token_ids
 
         self.eos_tensor = Tensor([tokenizer.eos_token_id], device=device)
         self.initial_state = states_to_token_maps.get_initial_state()
 
-    def create_states_mapping_from_fsm(self, fsm:FSM, tokenizer, frozen_tokens: list[str] = []) -> tuple[Any, Set[int], Set[int]]:
+    def create_states_mapping_from_fsm(self, fsm:FSM, tokenizer) -> tuple[Any, Set[int], Set[int]]:
         """Create the variables related to the mapping between states and tokens from an FSM."""
-        byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True, frozen_tokens=frozen_tokens)
+        byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True)
         regex_fsm, _ = make_deterministic_fsm(byte_fsm)
         states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
         return states_to_token_maps, empty_token_ids, regex_fsm.finals
@@ -97,10 +97,9 @@ class LogitsProcessor:
         for i in range(bs):
             seq = gen_ids[i]
             curr_key = hash(tuple(seq.tolist()))
-            ic(curr_key, seq.tolist())
             if curr_key not in self._guide_states:
                 prev_key = hash(tuple(seq[:-1].tolist()))
-                self._guide_states[curr_key] = self.guide.get_next_state(self._guide_states[prev_key], gen_ids[i, -1].item())
+                self._guide_states[curr_key] = self.guide.get_next_state(self._guide_states[prev_key], seq[-1].item())
             fsm_states.append(self._guide_states[curr_key])
         return fsm_states
 
@@ -117,7 +116,15 @@ class LogitsProcessor:
             for i,x in enumerate(input_ids): self.gen_ids[i].append(x.item())
 
         # get FSM states for the generated ids
-        fsm_states = self.make_states(bs, Tensor(self.gen_ids))
+        fsm_states: list[int] = []
+        gen_ids = Tensor(self.gen_ids)
+        for i in range(bs):
+            seq = gen_ids[i]
+            curr_key = hash(tuple(seq.tolist()))
+            if curr_key not in self._guide_states:
+                prev_key = hash(tuple(seq[:-1].tolist()))
+                self._guide_states[curr_key] = self.guide.get_next_state(self._guide_states[prev_key], seq[-1].item())
+            fsm_states.append(self._guide_states[curr_key])
 
         # create the mask
         data = [(self.guide.get_next_instruction(state).tokens, i) for i, state in enumerate(fsm_states)]
@@ -134,7 +141,6 @@ class LogitsProcessor:
 
 class RegexLogitsProcessor(LogitsProcessor):
     """Bias generation based on a regular expression."""
-
     def __init__(self, regex_string: str, tokenizer: "Tokenizer", device=None):
         guide = RegexGuide(tokenizer, regex_string=regex_string, device=device)
         super().__init__(tokenizer=tokenizer, guide=guide)

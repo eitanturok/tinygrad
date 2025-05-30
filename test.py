@@ -30,7 +30,7 @@ def main():
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    logits_processor = RegexLogitsProcessor(r'[abcdefghi]{3}', tokenizer, device)
+    logits_processor = RegexLogitsProcessor(r'[0-9]{20}', tokenizer, device)
     # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
     # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)
