@@ -2,9 +2,24 @@ from typing import Callable
 from tinygrad import Tensor, Device
 from tinygrad.helpers import getenv
 from examples.gpt2 import GPT2
-from structured_generation import RegexLogitsProcessor
+from structured_generation import RegexLogitsProcessor, JSONLogitsProcessor
 from icecream import install
 install()
+
+from pydantic import BaseModel
+
+class User(BaseModel):
+    name: str
+    last_name: str
+    id: int
+
+"""
+todo:
+1. JIT=1
+1. multiple batches
+2. llama model
+3. recursion depth error
+"""
 
 def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x:x):
     prompt_tokens = tokenizer.encode(prompt, allowed_special={"<|endoftext|>"})
@@ -29,8 +44,9 @@ def main():
     gpt2 = GPT2.build(model_size)
     model, tokenizer = gpt2.model, gpt2.tokenizer
 
-    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
     output = generate(model, tokenizer, prompt, logits_processor=logits_processor)
     ic(output)
 
