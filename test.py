@@ -57,19 +57,21 @@ def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=
     start_pos = prefill(model, toks[:-1], temperature)
     last_tok = toks[-1]
     generated = ""
+    print(prompt, end="", flush=True)
 
     max_new_tokens =  max_length - len(toks)
-    for _ in range(max_new_tokens):
+    for i in range(max_new_tokens):
         GlobalCounters.reset()
-        if timing: print("\n")
         st = GlobalCounters.time_sum_s
+        if timing: print("\n")
         with Profiling(enabled=profile):
-            with Timing("total ", enabled=timing, on_exit=lambda x: f", {1e9/x:.2f} tok/s, {GlobalCounters.global_mem/x:.2f} GB/s, param {param_bytes/x:.2f} GB/s"):
-                with Timing("enqueue in ", on_exit=(lambda et: (f", {(GlobalCounters.time_sum_s-st)*1e3:.2f} ms on GPU" if DEBUG>=2 else "")+
-                            f", {GlobalCounters.global_ops*1e-9:.2f} GOPS, {GlobalCounters.global_mem*1e-9:.2f} GB"+
-                            (f", {GlobalCounters.global_mem*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s, param {param_bytes*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s" if DEBUG>=2 else "")) if DEBUG else None, enabled=timing):
-                    tok = model(Tensor([[last_tok]], device=device), start_pos, temperature, logits_processor=logits_processor)
-                    tok = tok.item()
+            # with Timing("total ", enabled=timing, on_exit=lambda et: f", {1e9/et:.2f} tok/s, {GlobalCounters.global_mem/et:.2f} GB/s, param {param_bytes/et:.2f} GB/s"):
+            #     with Timing("enqueue in ", on_exit=(lambda _: (f", {(GlobalCounters.time_sum_s-st)*1e3:.2f} ms on GPU" if DEBUG>=2 else "")+
+            #                 f", {GlobalCounters.global_ops*1e-9:.2f} GOPS, {GlobalCounters.global_mem*1e-9:.2f} GB"+
+            #                 (f", {GlobalCounters.global_mem*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s, param {param_bytes*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s" if DEBUG>=2 else "")) if DEBUG else None, enabled=timing):
+            with Timing(f"Generate token {i:03d}:\t", enabled=timing, on_exit=lambda et: f", {GlobalCounters.mem_used/1e9:5.2f} GB ram, {GlobalCounters.global_mem/1e9:5.2f} GB global mem"):
+                tok_tensor = model(Tensor([[last_tok]], device=device), start_pos, temperature, logits_processor=logits_processor)
+                tok = tok_tensor.item()
         start_pos += 1
         last_tok = tok
         if tok in tokenizer.stop_tokens: break
@@ -106,9 +108,9 @@ def main():
     print(f'loaded llama-{model_size} weights + tokenizer from {weights_path.parent}')
 
     prompt = "The secret to the universe is "
-    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
-    logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
+    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    # logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
     output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
     ic(output)
 
