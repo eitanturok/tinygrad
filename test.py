@@ -60,9 +60,9 @@ def main():
 
     model_size = "1B"
     weights_path = fetch_weights(model_size)
-    print(f'Llama {model_size} weights + tokenizer saved in {weights_path.parent}')
     model = build_transformer(weights_path, model_size, device=device)
     tokenizer = OutlinesTokenizer(str(weights_path.parent / "tokenizer.model"))
+    print(f'loaded llama-{model_size} weights + tokenizer from {weights_path.parent}')
 
     prompt = "The secret to the universe is "
     # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
