@@ -33,23 +33,23 @@ def encode_message(tokenizer, role: str, content: str):
 
 last_seen_toks = []
 def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None):
-  global last_seen_toks
+    global last_seen_toks
 
-  # we can skip part of the prompt if it is the same as last and start_pos=0
-  if start_pos == 0:
-    for i, (a, b) in enumerate(zip(toks, last_seen_toks)):
-      if a != b: break
-    else: i = min(len(toks), len(last_seen_toks))
-    start_pos += i
-    last_seen_toks = toks
-    toks = toks[i:]
+    # we can skip part of the prompt if it is the same as last and start_pos=0
+    if start_pos == 0:
+        for i, (a, b) in enumerate(zip(toks, last_seen_toks)):
+        if a != b: break
+        else: i = min(len(toks), len(last_seen_toks))
+        start_pos += i
+        last_seen_toks = toks
+        toks = toks[i:]
 
-  # prefill the model
-  for tok in tqdm(toks, desc="Prefill"):
-    GlobalCounters.reset()
-    model(Tensor([[tok]], device=device), start_pos, temperature).realize()
-    start_pos += 1
-  return start_pos
+    # prefill the model
+    for tok in tqdm(toks, desc="Prefill"):
+        GlobalCounters.reset()
+        model(Tensor([[tok]], device=device), start_pos, temperature).realize()
+        start_pos += 1
+    return start_pos
 
 def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x,y:y, profile=False, timing=True):
     param_bytes = sum(x.lazydata.size * x.dtype.itemsize for x in get_parameters(model))
