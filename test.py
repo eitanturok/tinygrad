@@ -1,9 +1,12 @@
-from typing import Callable
+import sys
+from typing import Callable, Optional
 from tinygrad import Tensor, Device
-from tinygrad.helpers import getenv, fetch
+from tinygrad.helpers import getenv, fetch, colored, GlobalCounters, Timing, DEBUG, Profiling, tqdm
+from tinygrad.nn.state import get_parameters
 from examples.gpt2 import GPT2
 from examples.llama3 import build_transformer, Tokenizer, fetch_weights
 from structured_generation import RegexLogitsProcessor, JSONLogitsProcessor
+from extra.bench_log import BenchEvent, WallTimeEvent
 from icecream import install
 install()
 
@@ -18,24 +21,62 @@ class User(BaseModel):
 todo:
 1. JIT=1
 1. multiple batches
-2. llama model - done
+2. done - llama model
 3. recursion depth error
+4. print stats
 """
 
-def generate(model, tokenizer, prompt, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x:x, verbose=False):
-    # prompt_tokens = tokenizer.encode(prompt, allowed_special={"<|endoftext|>"})
-    prompt_tokens = tokenizer.encode(prompt, allow_special=True)
-    toks = [prompt_tokens[:] for _ in range(batch_size)]
-    assert (max_new_tokens :=  max_length - len(toks[0])) < getenv("MAX_CONTEXT", 1024), f"{max_new_tokens=} must not exceed the context"
-    start_pos = 0
+def encode_role(tokenizer, role: str):
+    return [tokenizer.special_tokens["<|start_header_id|>"]] + tokenizer.encode(role) + [tokenizer.special_tokens["<|end_header_id|>"]] + tokenizer.encode("\n\n")
+def encode_message(tokenizer, role: str, content: str):
+    return encode_role(tokenizer, role) + tokenizer.encode(content.strip()) + [tokenizer.special_tokens["<|eot_id|>"]]
+
+last_seen_toks = []
+def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None):
+  global last_seen_toks
+
+  # we can skip part of the prompt if it is the same as last and start_pos=0
+  if start_pos == 0:
+    for i, (a, b) in enumerate(zip(toks, last_seen_toks)):
+      if a != b: break
+    else: i = min(len(toks), len(last_seen_toks))
+    start_pos += i
+    last_seen_toks = toks
+    toks = toks[i:]
+
+  # prefill the model
+  for tok in tqdm(toks, desc="Prefill"):
+    GlobalCounters.reset()
+    model(Tensor([[tok]], device=device), start_pos, temperature).realize()
+    start_pos += 1
+  return start_pos
+
+def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x,y:y, profile=False, timing=True):
+    param_bytes = sum(x.lazydata.size * x.dtype.itemsize for x in get_parameters(model))
+    toks = [tokenizer.bos_id] + encode_message(tokenizer, "user", prompt) + encode_role(tokenizer, "assistant")
+    start_pos = prefill(model, toks[:-1], temperature)
+    last_tok = toks[-1]
+    generated = ""
+
+    max_new_tokens =  max_length - len(toks)
     for _ in range(max_new_tokens):
-        new_toks = model(Tensor([x[start_pos:] for x in toks]), start_pos, temperature, logits_processor=logits_processor)
-        # if all([tokenizer.eos_token_id == x.item() for x in [new_toks]]): break
-        if all([x.item() in tokenizer.stop_tokens for x in [new_toks]]): break
-        for i,x in enumerate([new_toks]): toks[i].append(x.item())
-        if verbose: print([tokenizer.decode(x) for x in toks])
-        start_pos = len(toks[0]) - 1
-    return [tokenizer.decode(x) for x in toks]
+        GlobalCounters.reset()
+        if timing: print("\n")
+        st = GlobalCounters.time_sum_s
+        with Profiling(enabled=profile):
+            with Timing("total ", enabled=timing, on_exit=lambda x: f", {1e9/x:.2f} tok/s, {GlobalCounters.global_mem/x:.2f} GB/s, param {param_bytes/x:.2f} GB/s"):
+                with Timing("enqueue in ", on_exit=(lambda et: (f", {(GlobalCounters.time_sum_s-st)*1e3:.2f} ms on GPU" if DEBUG>=2 else "")+
+                            f", {GlobalCounters.global_ops*1e-9:.2f} GOPS, {GlobalCounters.global_mem*1e-9:.2f} GB"+
+                            (f", {GlobalCounters.global_mem*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s, param {param_bytes*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s" if DEBUG>=2 else "")) if DEBUG else None, enabled=timing):
+                    tok = model(Tensor([[last_tok]], device=device), start_pos, temperature, logits_processor=logits_processor)
+                    tok = tok.item()
+        start_pos += 1
+        last_tok = tok
+        if tok in tokenizer.stop_tokens: break
+        generated += tokenizer.decode([tok])
+        print(prompt+generated, end="", flush=True)
+    print(flush=True)
+    return generated
 
 class OutlinesTokenizer(Tokenizer):
     def __init__(self, model_path: str):
@@ -68,7 +109,7 @@ def main():
     # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
     # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
     logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
-    output = generate(model, tokenizer, prompt, logits_processor=logits_processor, verbose=True)
+    output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
     ic(output)
 
 if __name__ == '__main__':
