@@ -22,46 +22,35 @@ class RegexGuide:
         if regex_string is not None: assert regex_parser is not None, f"need regex_parser with regex_string"
 
         fsm = fsm if regex_string is None else regex_parser(regex_string).to_fsm()
-        states_to_token_maps, empty_token_ids, _ = self.create_states_mapping_from_fsm(fsm, tokenizer)
-        self.states_to_token_maps = states_to_token_maps
+        state_to_tokens, empty_token_ids, _ = self.make_state_to_tokens_mapping(fsm, tokenizer)
+        self.state_to_tokens = state_to_tokens
         self.empty_token_ids = empty_token_ids
 
         self.eos_tensor = Tensor([tokenizer.eos_token_id], device=device)
-        self.initial_state = states_to_token_maps.get_initial_state()
+        self.initial_state = state_to_tokens.get_initial_state()
 
-    def create_states_mapping_from_fsm(self, fsm:FSM, tokenizer) -> tuple[Any, Set[int], Set[int]]:
-        """Create the variables related to the mapping between states and tokens from an FSM."""
+    def make_state_to_tokens_mapping(self, fsm:FSM, tokenizer) -> tuple[Any, Set[int], Set[int]]:
+        """Create a mapping between FSM state and permitted next tokens."""
         byte_fsm = make_byte_level_fsm(fsm.reduce(), keep_utf8=True)
         regex_fsm, _ = make_deterministic_fsm(byte_fsm)
-        states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
-        return states_to_token_maps, empty_token_ids, regex_fsm.finals
+        state_to_tokens, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
+        return state_to_tokens, empty_token_ids, regex_fsm.finals
 
-    def get_next_instruction(self, state: int) -> Optional[list[int]|Tensor]:
-        """Return the next instruction for guided generation.
-
-        The initialization of the guide builds an index which maps FSM states to a
-        map from authorized tokens to the state in which the guide needs to move
-        if said token is generated. Therefore the authorized tokens at the
-        current state are the keys of the map returned by the value of the index
-        for current state.
-
-        If the current state is not contained in the end this means that we are
-        in a final state of the guide. We only authorize EOS tokens in the final
-        state.
-        """
+    def next_tokens_mask(self, state: int) -> Optional[list[int]|Tensor]:
+        """Given a FSM state, return the permitted next tokens."""
         if state == -1: return self.eos_tensor
-        next_tokens_mask = self.states_to_token_maps.get_allowed_tokens(state)
+        next_tokens_mask = self.state_to_tokens.get_allowed_tokens(state)
         return self.eos_tensor if next_tokens_mask is None else Tensor(next_tokens_mask)
 
-    def get_next_state(self, state: int, token_id: int) -> int:
+    def next_state(self, state: int, token_id: int) -> int:
+        """Given a FSM state and token id, return the next FSM state."""
         if state == -1: return -1
-        next_state = self.states_to_token_maps.get_next_state(state, token_id)
+        next_state = self.state_to_tokens.get_next_state(state, token_id)
         return -1 if next_state is None else next_state
 
-    def is_final_state(self, state: int) -> bool: return state == -1 or self.states_to_token_maps.is_final_state(state)
-    def get_index_dict(self): return self.states_to_token_maps.get_transitions()
+    def is_final_state(self, state: int) -> bool: return state == -1 or self.state_to_tokens.is_final_state(state)
+    def get_index_dict(self): return self.state_to_tokens.get_transitions()
     def copy(self): return self
-
 
 class LogitsProcessor:
     tokenizer: "Tokenizer"
@@ -101,11 +90,11 @@ class LogitsProcessor:
             curr_key = hash(tuple(seq.tolist()))
             if curr_key not in self._guide_states:
                 prev_key = hash(tuple(seq[:-1].tolist()))
-                self._guide_states[curr_key] = self.guide.get_next_state(self._guide_states[prev_key], seq[-1].item())
+                self._guide_states[curr_key] = self.guide.next_state(self._guide_states[prev_key], seq[-1].item())
             fsm_states.append(self._guide_states[curr_key])
 
         # create the mask
-        data = [(self.guide.get_next_instruction(state), i) for i, state in enumerate(fsm_states)]
+        data = [(self.guide.next_tokens_mask(state), i) for i, state in enumerate(fsm_states)]
         all_tokens = Tensor.cat(*[tokens for tokens, _ in data]).to(logits.device)
         all_indices = Tensor.cat(*[Tensor.full((len(tokens),), idx, dtype=dtypes.int32) for tokens, idx in data]).to(logits.device)
         mask = Tensor.ones_like(logits, dtype=dtypes.bool).contiguous()
