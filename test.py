@@ -18,7 +18,7 @@ class User(BaseModel):
 todo:
 1. JIT=1
 1. multiple batches
-2. llama model
+2. llama model - done
 3. recursion depth error
 """
 
