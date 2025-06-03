@@ -1,12 +1,12 @@
 from pathlib import Path
-from typing import List
+from typing import Optional
 import json, argparse, random, time, os
 import tiktoken
 from tiktoken.load import load_tiktoken_bpe
 from extra.models.llama import Transformer, convert_from_huggingface, convert_from_gguf, fix_bf16
 from tinygrad.nn.state import safe_load, torch_load, load_state_dict, get_parameters, gguf_load
 from tinygrad import Tensor, dtypes, nn, Context, Device, GlobalCounters
-from tinygrad.helpers import Profiling, Timing, DEBUG, colored, fetch, tqdm
+from tinygrad.helpers import Profiling, Timing, colored, fetch, tqdm, JIT, DEBUG
 from extra.bench_log import BenchEvent, WallTimeEvent
 
 class Tokenizer:
@@ -43,9 +43,27 @@ class Tokenizer:
     return self.model.encode(text, allowed_special="all" if allow_special else set(), disallowed_special=set())
 
 # **** helper functions ****
+def fetch_weights(size:str, subdir:Optional[str]=None) -> Path:
+  if subdir is None:
+    subdir = {"1B": "llama3-1b-instruct", "8B":"llama3-8b-sfr", "70B": "DeepSeek-R1-Distill-Llama-70B"}[size]
+  fetch("https://huggingface.co/bofenghuang/Meta-Llama-3-8B/resolve/main/original/tokenizer.model", "tokenizer.model", subdir=subdir)
+  if size == "1B":
+    model = fetch("https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q6_K.gguf", "Llama-3.2-1B-Instruct-Q6_K.gguf", subdir=subdir)
+  elif size == "8B":
+    model = fetch("https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/raw/main/model.safetensors.index.json", "model.safetensors.index.json", subdir=subdir)
+    for i in range(n_weight_files:=4):
+      fetch(f"https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/resolve/main/model-{i+1:05d}-of-{n_weight_files:05d}.safetensors", f"model-{i+1:05d}-of-{n_weight_files:05d}.safetensors", subdir=subdir)
+  elif size == "70B":
+    model = fetch("https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B/resolve/main/model.safetensors.index.json?download=true", "model.safetensors.index.json", subdir=subdir)
+    for i in range(n_weight_files:=17):
+      fetch(f"https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B/resolve/main/model-{i+1:05d}-of-{n_weight_files:05d}.safetensors?download=true", f"model-{i+1:05d}-of-{n_weight_files:05d}.safetensors", subdir=subdir)
+  else:
+    raise ValueError("not valid model size")
+  return model
+
 def concat_weights(models, device=None):
   def convert(name) -> Tensor:
-    disk_tensors: List[Tensor] = [model[name] for model in models]
+    disk_tensors: list[Tensor] = [model[name] for model in models]
     if len(disk_tensors) == 1 or len(disk_tensors[0].shape) == 1:
       return disk_tensors[0].to(device=device)
     axis = 1 if name.endswith((".attention.wo.weight", ".feed_forward.w2.weight")) else 0
@@ -147,6 +165,7 @@ def NF4Linear(block_size):
 
 MODEL_PARAMS = {
   "1B": {
+    # "args": {"dim": 4096, "n_heads": 32, "n_kv_heads": 8, "n_layers": 32, "norm_eps": 1e-5, "rope_theta": 500000, "vocab_size": 128256, "hidden_dim": 8192},
     "args": {"dim": 2048, "n_heads": 32, "n_kv_heads": 8, "n_layers": 16, "norm_eps": 1e-5, "rope_theta": 500000, "vocab_size": 128256, "hidden_dim": 8192},
     "files": 1
   },
@@ -164,7 +183,7 @@ def build_transformer(model_path: Path, model_size="8B", quantize=None, scale_dt
   if quantize == "int8": linear, embedding, quantize_embeds = Int8Linear, Int8Embedding, True
   elif quantize == "nf4": linear, embedding, quantize_embeds = NF4Linear(64), nn.Embedding, False
   else: linear, embedding, quantize_embeds = nn.Linear, nn.Embedding, False
-  model = Transformer(**MODEL_PARAMS[model_size]["args"], linear=linear, embedding=embedding, max_context=max_context, jit=True)
+  model = Transformer(**MODEL_PARAMS[model_size]["args"], linear=linear, embedding=embedding, max_context=max_context, jit=JIT)
 
   if not load_weights: return model
 
@@ -252,23 +271,7 @@ if __name__ == "__main__":
 
   # download_model is the default without a model passed in
   if args.download_model or not args.model:
-    if args.size == "1B":
-      fetch("https://huggingface.co/bofenghuang/Meta-Llama-3-8B/resolve/main/original/tokenizer.model", "tokenizer.model", subdir="llama3-1b-instruct")
-      args.model = fetch("https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q6_K.gguf", "Llama-3.2-1B-Instruct-Q6_K.gguf", subdir="llama3-1b-instruct")
-    elif args.size == "8B":
-      fetch("https://huggingface.co/bofenghuang/Meta-Llama-3-8B/resolve/main/original/tokenizer.model", "tokenizer.model", subdir="llama3-8b-sfr")
-      fetch("https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/resolve/main/model-00001-of-00004.safetensors", "model-00001-of-00004.safetensors", subdir="llama3-8b-sfr")
-      fetch("https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/resolve/main/model-00002-of-00004.safetensors", "model-00002-of-00004.safetensors", subdir="llama3-8b-sfr")
-      fetch("https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/resolve/main/model-00003-of-00004.safetensors", "model-00003-of-00004.safetensors", subdir="llama3-8b-sfr")
-      fetch("https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/resolve/main/model-00004-of-00004.safetensors", "model-00004-of-00004.safetensors", subdir="llama3-8b-sfr")
-      args.model = fetch("https://huggingface.co/TriAiExperiments/SFR-Iterative-DPO-LLaMA-3-8B-R/raw/main/model.safetensors.index.json", "model.safetensors.index.json", subdir="llama3-8b-sfr")
-    elif args.size == "70B":
-      subdir = "DeepSeek-R1-Distill-Llama-70B"
-      args.model = fetch("https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B/resolve/main/model.safetensors.index.json?download=true", "model.safetensors.index.json", subdir=subdir)
-      fetch("https://huggingface.co/bofenghuang/Meta-Llama-3-8B/resolve/main/original/tokenizer.model", "tokenizer.model", subdir=subdir)
-      for i in range(17):
-        fetch(f"https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B/resolve/main/model-{i+1:05d}-of-000017.safetensors?download=true", f"model-{i+1:05d}-of-000017.safetensors", subdir=subdir)
-
+    args.model = fetch_weights(args.size)
   assert args.model is not None, "please provide --model option"
 
   if args.seed is not None: Tensor.manual_seed(args.seed)
