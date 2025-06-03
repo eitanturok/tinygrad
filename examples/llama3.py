@@ -183,7 +183,7 @@ def build_transformer(model_path: Path, model_size="8B", quantize=None, scale_dt
   if quantize == "int8": linear, embedding, quantize_embeds = Int8Linear, Int8Embedding, True
   elif quantize == "nf4": linear, embedding, quantize_embeds = NF4Linear(64), nn.Embedding, False
   else: linear, embedding, quantize_embeds = nn.Linear, nn.Embedding, False
-  model = Transformer(**MODEL_PARAMS[model_size]["args"], linear=linear, embedding=embedding, max_context=max_context, jit=JIT)
+  model = Transformer(**MODEL_PARAMS[model_size]["args"], linear=linear, embedding=embedding, max_context=max_context, jit=bool(JIT))
 
   if not load_weights: return model
 
