@@ -11,19 +11,8 @@ from interegular.fsm import FSM
 from outlines_core.fsm.json_schema import build_regex_from_schema
 from outlines_core.fsm.regex import create_fsm_index_tokenizer, make_byte_level_fsm, make_deterministic_fsm
 
-@dataclass(frozen=True)
-class Generate:
-    tokens: Optional[list[int]|Tensor]
-
-@dataclass(frozen=True)
-class Write:
-    tokens: list[int]|Tensor
-
-Instruction = Union[Write, Generate]
-
-
 class RegexGuide:
-    """Guide to generate text in the language of a regular expression."""
+    """Create finite state machine guide from a regular expression."""
     initial_state = 0
 
     def __init__(self, tokenizer, regex_string:Optional[str]=None, fsm: Optional[FSM]=None,
@@ -47,7 +36,7 @@ class RegexGuide:
         states_to_token_maps, empty_token_ids = create_fsm_index_tokenizer(regex_fsm, tokenizer)
         return states_to_token_maps, empty_token_ids, regex_fsm.finals
 
-    def get_next_instruction(self, state: int) -> Instruction:
+    def get_next_instruction(self, state: int) -> Optional[list[int]|Tensor]:
         """Return the next instruction for guided generation.
 
         The initialization of the guide builds an index which maps FSM states to a
@@ -60,9 +49,9 @@ class RegexGuide:
         in a final state of the guide. We only authorize EOS tokens in the final
         state.
         """
-        if state == -1: return Write(self.eos_tensor)
+        if state == -1: return self.eos_tensor
         next_tokens_mask = self.states_to_token_maps.get_allowed_tokens(state)
-        return Write(self.eos_tensor) if next_tokens_mask is None else Generate(Tensor(next_tokens_mask))
+        return self.eos_tensor if next_tokens_mask is None else Tensor(next_tokens_mask)
 
     def get_next_state(self, state: int, token_id: int) -> int:
         if state == -1: return -1
@@ -92,17 +81,6 @@ class LogitsProcessor:
         assert logits.ndim in [1, 2], f'logits can only have 1 or 2 dims but {logits.ndim=}'
         return self.process_logits(input_ids, logits) if logits.ndim == 2 else self.process_logits(input_ids.unsqueeze(0), logits.unsqueeze(0)).squeeze(0)
 
-    def make_states(self, bs:int, gen_ids:Tensor) -> list[int]:
-        fsm_states: list[int] = []  # vector of states corresponding to gen_ids
-        for i in range(bs):
-            seq = gen_ids[i]
-            curr_key = hash(tuple(seq.tolist()))
-            if curr_key not in self._guide_states:
-                prev_key = hash(tuple(seq[:-1].tolist()))
-                self._guide_states[curr_key] = self.guide.get_next_state(self._guide_states[prev_key], seq[-1].item())
-            fsm_states.append(self._guide_states[curr_key])
-        return fsm_states
-
     def process_logits(self, input_ids:Tensor, logits:Tensor) -> Tensor:
         """Use the Guide to bias the logits before sampling the next token."""
 
@@ -127,7 +105,7 @@ class LogitsProcessor:
             fsm_states.append(self._guide_states[curr_key])
 
         # create the mask
-        data = [(self.guide.get_next_instruction(state).tokens, i) for i, state in enumerate(fsm_states)]
+        data = [(self.guide.get_next_instruction(state), i) for i, state in enumerate(fsm_states)]
         all_tokens = Tensor.cat(*[tokens for tokens, _ in data]).to(logits.device)
         all_indices = Tensor.cat(*[Tensor.full((len(tokens),), idx, dtype=dtypes.int32) for tokens, idx in data]).to(logits.device)
         mask = Tensor.ones_like(logits, dtype=dtypes.bool).contiguous()
