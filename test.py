@@ -12,19 +12,22 @@ install()
 
 from pydantic import BaseModel
 
-class User(BaseModel):
-    name: str
-    last_name: str
-    id: int
-
 """
 todo:
 1. JIT=1
-1. multiple batches
+1. skip - multiple batches
 2. done - llama model
-3. recursion depth error
-4. print stats
+3. done - recursion depth error
+4. done - print stats
 """
+
+"""
+len(next_tokens_mask) == 1003
+the problem is this line:
+all_indices = Tensor.cat(*[Tensor.full((len(tokens),), idx, dtype=dtypes.int32) for tokens, idx in data]).to(logits.device)
+we have len(n.toposort())==7026
+"""
+
 
 def encode_role(tokenizer, role: str):
     return [tokenizer.special_tokens["<|start_header_id|>"]] + tokenizer.encode(role) + [tokenizer.special_tokens["<|end_header_id|>"]] + tokenizer.encode("\n\n")
@@ -38,7 +41,7 @@ def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None
     # we can skip part of the prompt if it is the same as last and start_pos=0
     if start_pos == 0:
         for i, (a, b) in enumerate(zip(toks, last_seen_toks)):
-        if a != b: break
+            if a != b: break
         else: i = min(len(toks), len(last_seen_toks))
         start_pos += i
         last_seen_toks = toks
@@ -107,10 +110,16 @@ def main():
     tokenizer = OutlinesTokenizer(str(weights_path.parent / "tokenizer.model"))
     print(f'loaded llama-{model_size} weights + tokenizer from {weights_path.parent}')
 
+    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+
+    class User(BaseModel):
+        # name: str
+        # last_name: str
+        id: int
+    logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
+
     prompt = "The secret to the universe is "
-    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
-    # logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
     output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
     ic(output)
 

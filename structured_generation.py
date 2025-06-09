@@ -83,9 +83,11 @@ class LogitsProcessor:
             for i,x in enumerate(input_ids): self.gen_ids[i].append(x.item())
 
         # get FSM states for the generated ids
+        ic(self._guide_states)
         fsm_states: list[int] = []
         gen_ids = Tensor(self.gen_ids)
         for i in range(bs):
+            ic(self._guide_states)
             seq = gen_ids[i]
             curr_key = hash(tuple(seq.tolist()))
             if curr_key not in self._guide_states:
@@ -95,6 +97,9 @@ class LogitsProcessor:
 
         # create the mask
         data = [(self.guide.next_tokens_mask(state), i) for i, state in enumerate(fsm_states)]
+        import numpy as np
+        ic(data[0][0].shape)
+        np.save("data_results/data.npy", data[0][0].numpy())
         all_tokens = Tensor.cat(*[tokens for tokens, _ in data]).to(logits.device)
         all_indices = Tensor.cat(*[Tensor.full((len(tokens),), idx, dtype=dtypes.int32) for tokens, idx in data]).to(logits.device)
         mask = Tensor.ones_like(logits, dtype=dtypes.bool).contiguous()
