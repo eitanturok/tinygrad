@@ -107,14 +107,14 @@ def main():
     tokenizer = OutlinesTokenizer(str(weights_path.parent / "tokenizer.model"))
     print(f'loaded llama-{model_size} weights + tokenizer from {weights_path.parent}')
 
-    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
 
-    # class User(BaseModel):
-    #     # name: str
-    #     # last_name: str
-    #     id: int
-    # logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
+    class User(BaseModel):
+        # name: str
+        # last_name: str
+        id: int
+    logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
 
     prompt = "The secret to the universe is "
     output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
