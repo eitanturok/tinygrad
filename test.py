@@ -1,7 +1,7 @@
 import sys
 from typing import Callable, Optional
 from tinygrad import Tensor, Device, TinyJit
-from tinygrad.helpers import GlobalCounters, Timing, Profiling, tqdm
+from tinygrad.helpers import GlobalCounters, Timing, Profiling, tqdm, PROFILE
 from tinygrad.nn.state import get_parameters
 from examples.gpt2 import GPT2
 from examples.llama3 import build_transformer, Tokenizer, fetch_weights
@@ -68,7 +68,7 @@ def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=
         GlobalCounters.reset()
         st = GlobalCounters.time_sum_s
         if timing: print("\n")
-        with Profiling(enabled=profile):
+        with Profiling(enabled=PROFILE):
             with Timing(f"Generate token {i:03d}:\t", enabled=timing, on_exit=lambda et: f", {GlobalCounters.mem_used/1e9:5.2f} GB ram, {GlobalCounters.global_mem/1e9:5.2f} GB global mem"):
                 tok_tensor = model(Tensor([[last_tok]], device=device), start_pos, temperature, logits_processor=logits_processor)
                 tok = tok_tensor.item()
