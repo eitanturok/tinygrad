@@ -114,13 +114,10 @@ class TransformerBlock:
     return (h + self.feed_forward(self.ffn_norm(h))).contiguous()
 
 # standard openai sampling
-def sample(logits:Tensor, temp:float, k:int, p:float, af:float, ap:float, logits_processor:Callable):
+def sample(logits:Tensor, temp:float, k:int, p:float, af:float, ap:float):
   assert logits.ndim == 1, "only works on 1d tensors"
   assert 0 <= p <= 1, "p must be between 0 and 1"
   assert 0 <= k <= logits.numel(), "k must be between 0 and numel"
-
-  # mask logits for structured generation
-  logits = logits_processor(logits)
 
   # if temperature is very low just use argmax
   if temp < 1e-6: return logits.argmax()
@@ -165,7 +162,7 @@ def sample(logits:Tensor, temp:float, k:int, p:float, af:float, ap:float, logits
   if af or ap:
     sample.alpha_counter = (counter == output_token).where(sample.alpha_counter + 1, sample.alpha_counter)
 
-  return output_token
+  return output_token.kernelize()
 
 class Transformer:
   def __init__(self, dim:int, hidden_dim:int, n_heads:int, n_layers:int, norm_eps:float, vocab_size, linear=nn.Linear, embedding=nn.Embedding,
@@ -177,8 +174,9 @@ class Transformer:
     self.max_context = max_context
     self.freqs_cis = precompute_freqs_cis(dim // n_heads, self.max_context * 2, rope_theta).contiguous()
     self.forward_jit = TinyJit(self.forward) if jit else None
+    self.sample_jit = TinyJit(sample) if jit else None
 
-  def forward(self, tokens:Tensor, start_pos:Union[Variable,int], temperature:float, top_k:int, top_p:float, alpha_f:float, alpha_p:float, logits_processor:Callable):
+  def forward(self, tokens:Tensor, start_pos:Union[Variable,int]):
     _bsz, seqlen = tokens.shape
     h = self.tok_embeddings(tokens)
 
@@ -189,14 +187,22 @@ class Transformer:
     for layer in self.layers: h = layer(h, start_pos, freqs_cis, mask)
     logits = self.output(self.norm(h)).float()[:, -1, :]
 
-    return sample(logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p, functools.partial(logits_processor, tokens.flatten())).kernelize()
+    return logits.flatten()
 
   def __call__(self, tokens:Tensor, start_pos:int, temperature:float=0.0, top_k:int=0,
-              top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor:Callable=lambda x,y:y):
+              top_p:float=0.8, alpha_f:float=0.0, alpha_p:float=0.0, logits_processor:Optional[Callable]=None):
     # TODO: better way to handle the first call v.s. the rest?
     if tokens.shape[0:2] == (1,1) and self.forward_jit is not None and start_pos != 0:
-      return self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos), temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
-    return self.forward(tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p, logits_processor)
+      logits = self.forward_jit(tokens, Variable("start_pos", 1, self.max_context).bind(start_pos))
+    else:
+      logits = self.forward(tokens, start_pos)
+
+    # mask logits for structured generation
+    if logits_processor is not None: logits = logits_processor(tokens.flatten(), logits)
+
+    if self.sample_jit is not None:
+      return self.sample_jit(logits, temperature, top_k, top_p, alpha_f, alpha_p)
+    return sample(logits, temperature, top_k, top_p, alpha_f, alpha_p)
 
 # *** helpers ***
 

@@ -1,12 +1,11 @@
 import sys
 from typing import Callable, Optional
-from tinygrad import Tensor, Device
-from tinygrad.helpers import getenv, fetch, colored, GlobalCounters, Timing, DEBUG, Profiling, tqdm
+from tinygrad import Tensor, Device, TinyJit
+from tinygrad.helpers import GlobalCounters, Timing, Profiling, tqdm
 from tinygrad.nn.state import get_parameters
 from examples.gpt2 import GPT2
 from examples.llama3 import build_transformer, Tokenizer, fetch_weights
 from structured_generation import RegexLogitsProcessor, JSONLogitsProcessor
-from extra.bench_log import BenchEvent, WallTimeEvent
 from icecream import install
 install()
 
@@ -35,6 +34,7 @@ def encode_message(tokenizer, role: str, content: str):
     return encode_role(tokenizer, role) + tokenizer.encode(content.strip()) + [tokenizer.special_tokens["<|eot_id|>"]]
 
 last_seen_toks = []
+@TinyJit
 def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None):
     global last_seen_toks
 
@@ -54,6 +54,7 @@ def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None
         start_pos += 1
     return start_pos
 
+@Timing("Total Generation Time: ")
 def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x,y:y, profile=False, timing=True):
     param_bytes = sum(x.lazydata.size * x.dtype.itemsize for x in get_parameters(model))
     toks = [tokenizer.bos_id] + encode_message(tokenizer, "user", prompt) + encode_role(tokenizer, "assistant")
@@ -68,10 +69,6 @@ def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=
         st = GlobalCounters.time_sum_s
         if timing: print("\n")
         with Profiling(enabled=profile):
-            # with Timing("total ", enabled=timing, on_exit=lambda et: f", {1e9/et:.2f} tok/s, {GlobalCounters.global_mem/et:.2f} GB/s, param {param_bytes/et:.2f} GB/s"):
-            #     with Timing("enqueue in ", on_exit=(lambda _: (f", {(GlobalCounters.time_sum_s-st)*1e3:.2f} ms on GPU" if DEBUG>=2 else "")+
-            #                 f", {GlobalCounters.global_ops*1e-9:.2f} GOPS, {GlobalCounters.global_mem*1e-9:.2f} GB"+
-            #                 (f", {GlobalCounters.global_mem*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s, param {param_bytes*1e-9/(GlobalCounters.time_sum_s-st):.2f} GB/s" if DEBUG>=2 else "")) if DEBUG else None, enabled=timing):
             with Timing(f"Generate token {i:03d}:\t", enabled=timing, on_exit=lambda et: f", {GlobalCounters.mem_used/1e9:5.2f} GB ram, {GlobalCounters.global_mem/1e9:5.2f} GB global mem"):
                 tok_tensor = model(Tensor([[last_tok]], device=device), start_pos, temperature, logits_processor=logits_processor)
                 tok = tok_tensor.item()
@@ -110,14 +107,14 @@ def main():
     tokenizer = OutlinesTokenizer(str(weights_path.parent / "tokenizer.model"))
     print(f'loaded llama-{model_size} weights + tokenizer from {weights_path.parent}')
 
-    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
 
-    class User(BaseModel):
-        # name: str
-        # last_name: str
-        id: int
-    logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
+    # class User(BaseModel):
+    #     # name: str
+    #     # last_name: str
+    #     id: int
+    # logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
 
     prompt = "The secret to the universe is "
     output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
