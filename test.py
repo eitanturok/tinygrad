@@ -54,30 +54,30 @@ def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None
         start_pos += 1
     return start_pos
 
-@Timing("Total Generation Time: ")
+def print_stats(et): return f", {GlobalCounters.mem_used/1e9:5.2f} GB ram, {GlobalCounters.global_mem/1e9:5.2f} GB global mem"
+
+@Timing(f"Total Generation:\t", on_exit=print_stats)
 def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x,y:y, profile=False, timing=True):
     param_bytes = sum(x.lazydata.size * x.dtype.itemsize for x in get_parameters(model))
     toks = [tokenizer.bos_id] + encode_message(tokenizer, "user", prompt) + encode_role(tokenizer, "assistant")
     start_pos = prefill(model, toks[:-1], temperature)
     last_tok = toks[-1]
     generated = ""
-    print(prompt, end="", flush=True)
+    print(f"\nPrompt:\n{prompt}\n", flush=True)
 
-    max_new_tokens =  max_length - len(toks)
-    for i in range(max_new_tokens):
+    max_gen_toks =  max_length - len(toks)
+    for i in range(max_gen_toks):
         GlobalCounters.reset()
-        st = GlobalCounters.time_sum_s
-        if timing: print("\n")
         with Profiling(enabled=PROFILE):
-            with Timing(f"Generate token {i:03d}:\t", enabled=timing, on_exit=lambda et: f", {GlobalCounters.mem_used/1e9:5.2f} GB ram, {GlobalCounters.global_mem/1e9:5.2f} GB global mem"):
+            with Timing(f"Generate token {i:03d}:\t", enabled=timing, on_exit=print_stats):
                 tok_tensor = model(Tensor([[last_tok]], device=device), start_pos, temperature, logits_processor=logits_processor)
                 tok = tok_tensor.item()
         start_pos += 1
         last_tok = tok
         if tok in tokenizer.stop_tokens: break
         generated += tokenizer.decode([tok])
-        print(prompt+generated, end="", flush=True)
-    print(flush=True)
+        print(prompt+generated, end="\n\n", flush=True)
+    print(prompt+generated, end="\n\n", flush=True)
     return generated
 
 class OutlinesTokenizer(Tokenizer):
@@ -92,10 +92,10 @@ def main():
 
     seed = 42
     Tensor.manual_seed(seed)
-    print(f"using {seed=}")
+    print(f"{seed=}")
 
     device = Device.DEFAULT
-    print(f"using {device=}")
+    print(f"{device=}")
 
     # model_size = "gpt2"
     # gpt2 = GPT2.build(model_size)
@@ -107,18 +107,18 @@ def main():
     tokenizer = OutlinesTokenizer(str(weights_path.parent / "tokenizer.model"))
     print(f'loaded llama-{model_size} weights + tokenizer from {weights_path.parent}')
 
-    # ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
-    # logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
+    ip_address_regex = r"((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)"
+    logits_processor = RegexLogitsProcessor(ip_address_regex, tokenizer, device)
 
-    class User(BaseModel):
-        # name: str
-        # last_name: str
-        id: int
-    logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
+    # class User(BaseModel):
+    #     # name: str
+    #     # last_name: str
+    #     id: int
+    # logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
 
     prompt = "The secret to the universe is "
     output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
-    ic(output)
+    print(output)
 
 if __name__ == '__main__':
     main()
