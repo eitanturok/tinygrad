@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 """
 todo:
-1. JIT=1
+1. done - JIT=1
 1. skip - multiple batches
 2. done - llama model
 3. done - recursion depth error
@@ -57,7 +57,8 @@ def prefill(model, toks, temperature, start_pos:int=0, device:Optional[str]=None
 def print_stats(et): return f", {GlobalCounters.mem_used/1e9:5.2f} GB ram, {GlobalCounters.global_mem/1e9:5.2f} GB global mem"
 
 @Timing(f"Total Generation:\t", on_exit=print_stats)
-def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=30, batch_size:int=1, logits_processor:Callable=lambda x,y:y, profile=False, timing=True):
+def generate(model, tokenizer, prompt, device=None, temperature=0.0, max_length=30, logits_processor:Optional[Callable]=None, timing=True):
+    # todo: batch size > 1
     param_bytes = sum(x.lazydata.size * x.dtype.itemsize for x in get_parameters(model))
     toks = [tokenizer.bos_id] + encode_message(tokenizer, "user", prompt) + encode_role(tokenizer, "assistant")
     start_pos = prefill(model, toks[:-1], temperature)
@@ -97,10 +98,6 @@ def main():
     device = Device.DEFAULT
     print(f"{device=}")
 
-    # model_size = "gpt2"
-    # gpt2 = GPT2.build(model_size)
-    # model, tokenizer = gpt2.model, gpt2.tokenizer
-
     model_size = "1B"
     weights_path = fetch_weights(model_size)
     model = build_transformer(weights_path, model_size, device=device)
@@ -116,7 +113,7 @@ def main():
     #     id: int
     # logits_processor = JSONLogitsProcessor(User, tokenizer, device=device)
 
-    prompt = "The secret to the universe is "
+    prompt = ""
     output = generate(model, tokenizer, prompt, device=device, logits_processor=logits_processor)
     print(output)
 
