@@ -42,13 +42,13 @@ class TestTorchCompile(unittest.TestCase):
     return ret, et
 
   def test_correctness(self):
-    import numpy as np
-    def fxn(x:torch.Tensor|np.ndarray) -> torch.Tensor|np.ndarray: return x.sum()
+    def fxn(x): return x.sum()
     t = torch.randn(4, 4)
 
     ret1, _ = self._run_fxn(torch.compile(fxn), t)
-    ret2,  = self._run_fxn(torch.compile(fxn, backend="tiny"), t)
-    ret3, _ = self._run_fxn(torch.compile(fxn, backend="tiny"), t.to("tiny"))
+    ret2, _ = self._run_fxn(torch.compile(fxn), t.to("tiny"))
+    ret3,  = self._run_fxn(torch.compile(fxn, backend="tiny"), t)
+    ret4, _ = self._run_fxn(torch.compile(fxn, backend="tiny"), t.to("tiny"))
 
     expected = fxn(t.numpy())
     assert ret1.numpy() == ret2.numpy() == ret3.numpy() == expected
