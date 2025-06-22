@@ -34,26 +34,21 @@ class TestTorchCompile(unittest.TestCase):
     os.environ["TORCHDYNAMO_VERBOSE"] = "1"
     os.environ["TORCH_DEBUG"] = "1"
 
-  def run_fxn(self, f, *args):
-    times = []
-    outputs = []
-    for _ in range(5):
-      st = time.perf_counter_ns()
-      out = f(*args)
-      times.append(time.perf_counter_ns() - st)
-      outputs.append(out)
-    return outputs, times
+  def _run_fxn(self, f, *args):
+    torch._dynamo.reset() # remove?
+    st = time.perf_counter_ns()
+    ret = f(*args)
+    et = time.perf_counter_ns() - st
+    return ret, et
 
   def test_correctness(self):
     import numpy as np
     def fxn(x:torch.Tensor|np.ndarray) -> torch.Tensor|np.ndarray: return x.sum()
     t = torch.randn(4, 4)
 
-    ret1 = torch.compile(fxn)(t)
-    torch._dynamo.reset() # remove?
-    ret2 = torch.compile(fxn, backend="tiny")(t)
-    torch._dynamo.reset() # remove?
-    ret3 = torch.compile(fxn, backend="tiny")(t.to("tiny"))
+    ret1, _ = self._run_fxn(torch.compile(fxn), t)
+    ret2,  = self._run_fxn(torch.compile(fxn, backend="tiny"), t)
+    ret3, _ = self._run_fxn(torch.compile(fxn, backend="tiny"), t.to("tiny"))
 
     expected = fxn(t.numpy())
     assert ret1.numpy() == ret2.numpy() == ret3.numpy() == expected
