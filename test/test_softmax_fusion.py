@@ -12,14 +12,14 @@ def single_kernel_softmax(x_in:Tensor, axis=-1, dtype:DTypeLike|None=None) -> Te
   nr_dim, r_dim = x.shape
 
   inp = x.reshape(nr_dim, 1, 1, r_dim).expand(nr_dim, r_dim, 1, r_dim)
-  imx = x.reshape(nr_dim, 1, r_dim, 1).expand(nr_dim, r_dim, r_dim, r_dim).max(axis=-2, keepdim=True)
+  imx = x.reshape(nr_dim, 1, r_dim, 1).expand(nr_dim, r_dim, r_dim, r_dim).max(axis=-2, keepdim=False)
   m = inp - imx.detach()
   if dtype is not None: m = m.cast(dtype)
   e = m.exp()
-  ss = e.sum(axis=-1, keepdim=True)
+  ss = e.sum(axis=-1, keepdim=False)
 
   inp = x.reshape(nr_dim, r_dim, 1, 1)
-  imx = x.reshape(nr_dim, 1, r_dim, 1).expand(nr_dim, r_dim, r_dim, 1).max(axis=-2, keepdim=True)
+  imx = x.reshape(nr_dim, 1, r_dim, 1).expand(nr_dim, r_dim, r_dim, 1).max(axis=-2, keepdim=False)
   m = inp - imx.detach()
   if dtype is not None: m = m.cast(dtype)
   e = m.exp()
@@ -112,13 +112,13 @@ class TestSoftmaxFusion(unittest.TestCase):
     print("*** norm ***")
     with Context(NOOPT=1, DEBUG=max(DEBUG.value, 2)):
       # NOTE: there's an implied expand on the mean here
-      sout = self.test / self.test.mean(-1, keepdim=True)
+      sout = self.test / self.test.mean(-1, keepdim=False)
       sout.realize()
 
     print("*** single kernel norm ***")
     with Context(NOOPT=1, DEBUG=max(DEBUG.value, 2)):
       inp = self.test.reshape(32, 10, 1)
-      div = self.test.reshape(32, 1, 10).expand(32, 10, 10).mean(axis=-1, keepdim=True)
+      div = self.test.reshape(32, 1, 10).expand(32, 10, 10).mean(axis=-1, keepdim=False)
       out = (inp / div).reshape(32, 10)
       out.realize()
 

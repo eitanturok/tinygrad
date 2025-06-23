@@ -682,7 +682,7 @@ class TestZeroShapeTensor(unittest.TestCase):
     assert a.shape == (3, 2)
     np.testing.assert_equal(a.numpy(), np.sum(np.zeros((3, 2, 0)), axis=2))
 
-    a = Tensor.ones(3, 2, 0).sum(axis=2, keepdim=True)
+    a = Tensor.ones(3, 2, 0).sum(axis=2, keepdim=False)
     assert a.shape == (3, 2, 1)
     np.testing.assert_equal(a.numpy(), np.sum(np.zeros((3, 2, 0)), axis=2, keepdims=True))
 

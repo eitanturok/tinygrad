@@ -303,7 +303,7 @@ class RMSNorm:
     self.eps = eps
     self.weight = Tensor.ones(dim) if elementwise_affine else None
 
-  def _norm(self, x:Tensor) -> Tensor: return x * (x.square().mean(-1, keepdim=True) + self.eps).rsqrt()
+  def _norm(self, x:Tensor) -> Tensor: return x * (x.square().mean(-1, keepdim=False) + self.eps).rsqrt()
 
   def __call__(self, x:Tensor) -> Tensor:
     x = self._norm(x.float()).cast(x.dtype)

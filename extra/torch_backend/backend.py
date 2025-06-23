@@ -478,7 +478,7 @@ tiny_backend_out = {**{f"aten.{x}.out":getattr(Tensor,x) for x in simple_tensor_
   "aten.prod.int_out": Tensor.prod,
   "aten.scatter.src_out": Tensor.scatter,
   # NOTE: axis=[] in torch means all, change tinygrad?
-  "aten.sum.IntList_out": lambda self,axis,keepdim=False,dtype=None:
+  "aten.sum.IntList_out": lambda self,axis,keepdim=True,dtype=None:
     self.sum(axis if axis is None or len(axis) else None, keepdim,
                          dtype = _from_torch_dtype(dtype) if dtype is not None else None),
 }}
@@ -565,14 +565,14 @@ tiny_backend = {**{k:wrap_out(v) for k,v in tiny_backend_out.items()}, **{
   "aten.topk": Tensor.topk,
   "aten.constant_pad_nd": lambda self, padding, value=0.0: self.pad(padding, mode="constant", value=value).contiguous(),
   "aten.cumsum": lambda self, dim: self.cumsum(dim).contiguous(), # TODO: fix test_simple_cumsum, fails without contiguous for shapes >512
-  "aten.logsumexp": lambda self, axis, keepdim=False: self.logsumexp(axis[0], keepdim=keepdim),
+  "aten.logsumexp": lambda self, axis, keepdim=True: self.logsumexp(axis[0], keepdim=keepdim),
   "aten.roll": Tensor.roll,
   "aten.logcumsumexp": Tensor.logcumsumexp,
   "aten.lerp.Tensor": Tensor.lerp,
   "aten.ones_like": lambda self, dtype=None, device=None, **kwargs:
     self.ones_like(**{k: v for k, v in {"dtype": _from_torch_dtype(dtype) if dtype else None,
                                         "device": _from_torch_device(device) if device else None}.items() if v is not None}),
-  "aten.max.dim": lambda self, dim, keepdim=False: (self.max(dim, keepdim), self.argmax(dim, keepdim).cast(dtype=dtypes.int64)),
+  "aten.max.dim": lambda self, dim, keepdim=True: (self.max(dim, keepdim), self.argmax(dim, keepdim).cast(dtype=dtypes.int64)),
   "aten.unfold": Tensor.unfold,
 }}
 

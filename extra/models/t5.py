@@ -62,7 +62,7 @@ class T5LayerNorm:
     # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
     # half-precision inputs is done in fp32
 
-    variance = hidden_states.cast(dtypes.float32).pow(2).mean(-1, keepdim=True)
+    variance = hidden_states.cast(dtypes.float32).pow(2).mean(-1, keepdim=False)
     hidden_states = hidden_states * Tensor.rsqrt(variance + self.variance_epsilon)
 
     # convert into half-precision if necessary

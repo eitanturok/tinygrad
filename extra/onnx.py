@@ -454,8 +454,8 @@ def get_onnx_ops():
   def MaxUnpool(xT: Tensor, xI: Tensor, outshape: list[int]|None=None, kernel_shape:list[int]=None, pads:list[int]|int=0, strides:list[int]|int=1):
     return Tensor.max_unpool2d(xT, xI, kernel_shape, strides, 1, pads, outshape if outshape is None else tuple(outshape))
 
-  def GlobalAveragePool(X:Tensor): return X.mean(axis=tuple(range(2, X.ndim)), keepdim=True)
-  def GlobalMaxPool(X:Tensor): return X.max(axis=tuple(range(2, X.ndim)), keepdim=True)
+  def GlobalAveragePool(X:Tensor): return X.mean(axis=tuple(range(2, X.ndim)), keepdim=False)
+  def GlobalMaxPool(X:Tensor): return X.max(axis=tuple(range(2, X.ndim)), keepdim=False)
 
   def Gemm(A:Tensor, B:Tensor, C:Tensor|None=None, alpha:float=1.0, beta:float=1.0, transA:int=0, transB:int=0, broadcast=0):
     ret = alpha * (A.transpose(transA) @ B.transpose(transB))
@@ -559,8 +559,8 @@ def get_onnx_ops():
   def LayerNormalization(x:Tensor, scale:Tensor, bias:Tensor, axis:int=-1, epsilon:float=1e-05, stash_type:int=1):
     assert stash_type == 1, "only float32 is supported"
     axes = tuple(i for i in range(axis if axis >= 0 else x.ndim + axis, x.ndim))
-    mean = x.mean(axis=axes, keepdim=True)
-    return x.layernorm(axes, epsilon).mul(scale).add(bias), mean, (x.sub(mean)).square().mean(axis=axes, keepdim=True).add(epsilon).rsqrt()
+    mean = x.mean(axis=axes, keepdim=False)
+    return x.layernorm(axes, epsilon).mul(scale).add(bias), mean, (x.sub(mean)).square().mean(axis=axes, keepdim=False).add(epsilon).rsqrt()
   def SkipLayerNormalization(x:Tensor, skip:Tensor, gamma:Tensor, beta:Tensor|None=None, bias:Tensor|None=None, epsilon:float=1e-12):
     x = x + skip
     if bias is not None: x = x + bias
@@ -593,7 +593,7 @@ def get_onnx_ops():
     out = embedding_sum.layernorm(eps=epsilon) * gamma + beta
     return out, None, embedding_sum
   def MeanVarianceNormalization(x:Tensor, axis:list[int]=[0,2,3]):
-    return (x - x.mean(axis, keepdim=True)) / (x.std(axis, keepdim=True, correction=0) + 1e-9)
+    return (x - x.mean(axis, keepdim=False)) / (x.std(axis, keepdim=False, correction=0) + 1e-9)
 
   def OneHot(indices:Tensor, depth:float|int|list, values:Tensor, axis:int=-1):
     # Scalar or Rank 1 tensor containing exactly one element

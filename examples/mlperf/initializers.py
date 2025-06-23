@@ -9,7 +9,7 @@ def rand_truncn(*shape, dtype=None, truncstds=2, **kwargs) -> Tensor:
   CNT=8
   x = Tensor.randn(*(*shape, CNT), dtype=dtype, **kwargs)
   ctr = Tensor.arange(CNT).reshape((1,) * len(x.shape[:-1]) + (CNT,)).expand(x.shape)
-  take = (x.abs() <= truncstds).where(ctr, CNT).min(axis=-1, keepdim=True)  # set to 0 if no good samples
+  take = (x.abs() <= truncstds).where(ctr, CNT).min(axis=-1, keepdim=False)  # set to 0 if no good samples
   return (ctr == take).where(x, 0).sum(axis=-1)
 
 # https://github.com/keras-team/keras/blob/v2.15.0/keras/initializers/initializers.py#L1026-L1065
@@ -39,7 +39,7 @@ class LinearBert(nn.Linear):
   def __init__(self, in_features, out_features, bias=True, std=0.02):
     self.weight = std * rand_truncn(out_features, in_features, dtype=dtypes.float32)
     self.bias = Tensor.zeros(out_features, dtype=dtypes.float32) if bias else None
-  
+
   def __call__(self, x:Tensor):
     return x.cast(dtypes.default_float).linear(self.weight.cast(dtypes.default_float).transpose(), self.bias.cast(dtypes.default_float) if self.bias is not None else None)
 
