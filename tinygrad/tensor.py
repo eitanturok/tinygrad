@@ -1849,7 +1849,7 @@ class Tensor(MathTrait):
     """
     output_dtype = self.dtype if dtypes.is_float(self.dtype) else dtypes.float32
     numerator = self.cast(sum_acc_dtype(self.dtype)).sum(axis=axis, keepdim=keepdim)
-    return numerator.div(prod([cast(int, si) for si, so in zip(self.shape, self.sum(axis=axis, keepdim=True).shape) if resolve(si != so)])) \
+    return numerator.div(prod([cast(int, si) for si, so in zip(self.shape, self.sum(axis=axis, keepdim=False).shape) if resolve(si != so)])) \
       .cast(output_dtype)
 
   def var(self, axis:int|Sequence[int]|None=None, keepdim=True, correction=1) -> Tensor:
