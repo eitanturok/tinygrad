@@ -277,7 +277,7 @@ class TestSchedule(unittest.TestCase):
   def test_binop_reshape_reduce_fusion(self):
     a = Tensor.empty(100)
     b = Tensor.empty(100)
-    c = (a+b).reshape(10, 10).sum(axis=0, keepdim=True)
+    c = (a+b).reshape(10, 10).sum(axis=0, keepdim=False)
     check_schedule(c, 1)
 
   def test_reduce_reshape_binop_fusion(self):
@@ -290,13 +290,13 @@ class TestSchedule(unittest.TestCase):
   def test_reduce_permute_binop_fusion(self):
     a = Tensor.empty(10,10,10)
     b = Tensor.empty(10,10,1)
-    c = a.sum(axis=0, keepdim=True).permute(2,1,0) + b
+    c = a.sum(axis=0, keepdim=False).permute(2,1,0) + b
     with self.assertRaises(KernelCountException): check_schedule(c, 1)
 
   def test_allow_push_permutes(self):
     a = Tensor.randn(10,10,10).realize()
     b = Tensor.randn(10,10,1).realize()
-    c = a.sum(axis=0, keepdim=True).permute(2,1,0) + b
+    c = a.sum(axis=0, keepdim=False).permute(2,1,0) + b
     with Context(DONT_GROUP_REDUCES=1): run_schedule(check_schedule(c, 1))
     np.testing.assert_allclose(c.numpy(), np.sum(a.numpy(), axis=0, keepdims=True).transpose(2,1,0)+b.numpy())
 
@@ -348,7 +348,7 @@ class TestSchedule(unittest.TestCase):
 
   def test_cache_reduce_parent(self):
     x = Tensor.empty(32)
-    r0 = x.mean(axis=0, keepdim=True)
+    r0 = x.mean(axis=0, keepdim=False)
     r1 = (x - r0).sum(axis=0).div(2)
     out = r0 + r1
     schedule = check_schedule(out, 2)
@@ -358,7 +358,7 @@ class TestSchedule(unittest.TestCase):
   def test_cache_reduce_multiple_children(self):
     x = Tensor.empty(32)
     y = Tensor.empty(4, 4)
-    r0 = x.mean(axis=0, keepdim=True)
+    r0 = x.mean(axis=0, keepdim=False)
     r1 = (x - r0).sum(axis=0).div(2)
     out0 = r0 + y
     out1 = r1 + y
@@ -432,7 +432,7 @@ class TestSchedule(unittest.TestCase):
 
   def test_fold_double_unary(self):
     y = Tensor.empty(2)
-    out = y.sum(keepdim=True).sqrt().neg()
+    out = y.sum(keepdim=False).sqrt().neg()
     check_schedule(out, 1)
 
   #@unittest.skip("may want to reconsider this")
@@ -814,7 +814,7 @@ class TestSchedule(unittest.TestCase):
   def test_preserve_multistage_reduce(self):
     big_enough = getenv("REDUCEOP_SPLIT_THRESHOLD", 32768)
     x = Tensor.randn(big_enough).realize()
-    out = (x - x.max(keepdim=True)).max()
+    out = (x - x.max(keepdim=False)).max()
     run_schedule(check_schedule(out, 4))
     np.testing.assert_allclose(out.numpy(), (x.numpy() - x.numpy().max(keepdims=True)).max())
 
@@ -1026,7 +1026,7 @@ class TestSchedule(unittest.TestCase):
 
   def test_reduce_shrink_output(self):
     a = Tensor.empty(4, 4)
-    r = a.sum(keepdim=True)
+    r = a.sum(keepdim=False)
     out0 = r.exp2()
     out1 = out0[0] + Tensor.empty(1, )
     check_schedule([r, out0, out1], 3)
@@ -1069,7 +1069,7 @@ class TestSchedule(unittest.TestCase):
     a = Tensor.randn(4, 32).realize()
     b = Tensor.randn(4, 32).realize()
     c = Tensor.randn(4, 32).realize()
-    out = (c * a.sum(-1, keepdim=True)).sum(-1) + (b * a.sum(-1, keepdim=True)).sum(-1) # a.sum has >1 children but should still fuse
+    out = (c * a.sum(-1, keepdim=False)).sum(-1) + (b * a.sum(-1, keepdim=False)).sum(-1) # a.sum has >1 children but should still fuse
     # run_schedule(check_schedule(out, 1))
     run_schedule(check_schedule(out, 3))
     np.testing.assert_allclose(out.numpy(), \
@@ -1078,7 +1078,7 @@ class TestSchedule(unittest.TestCase):
   def test_reduce_expand_reduce_fusion(self):
     Tensor.manual_seed(0)
     a = Tensor.randn(4, 32).realize()
-    out = (a+a.sum(-1, keepdim=True)).sum(-1)
+    out = (a+a.sum(-1, keepdim=False)).sum(-1)
     # run_schedule(check_schedule(out, 1))
     run_schedule(check_schedule(out, 2))
     np.testing.assert_allclose(out.numpy(), (a.numpy()+a.numpy().sum(axis=-1,keepdims=True)).sum(axis=-1), atol=1e-4, rtol=1e-4)
@@ -1086,7 +1086,7 @@ class TestSchedule(unittest.TestCase):
   def test_reduce_expand_reduce_expand_fusion(self):
     Tensor.manual_seed(0)
     a = Tensor.randn(4, 32).realize()
-    out = a+(a+a.sum(-1,keepdim=True)).sum(-1, keepdim=True)
+    out = a+(a+a.sum(-1,keepdim=False)).sum(-1, keepdim=False)
     # run_schedule(check_schedule(out, 2))
     run_schedule(check_schedule(out, 3))
     np.testing.assert_allclose(out.numpy(), \
@@ -1095,7 +1095,7 @@ class TestSchedule(unittest.TestCase):
   def test_branching_reduces_and_expands_fusion(self):
     Tensor.manual_seed(0)
     a = Tensor.randn(4, 32).realize()
-    out0 = a+a.sum(-1, keepdim=True)
+    out0 = a+a.sum(-1, keepdim=False)
     out1 = out0.sum(-1)
     # run_schedule(check_schedule(out, 2))
     run_schedule(check_schedule([out0, out1], 3))
@@ -1106,7 +1106,7 @@ class TestSchedule(unittest.TestCase):
     Tensor.manual_seed(0)
     x = Tensor.randn(4, 32).realize()
     y = Tensor.randn(4, 32).realize()
-    out = (y + x.sum(axis=-1, keepdim=True)).sum(axis=-1)
+    out = (y + x.sum(axis=-1, keepdim=False)).sum(axis=-1)
     # run_schedule(check_schedule(out, 1))
     run_schedule(check_schedule(out, 2))
     np.testing.assert_allclose(out.numpy(), (y.numpy() + x.numpy().sum(axis=-1, keepdims=True)).sum(axis=-1), atol=1e-4, rtol=1e-4)
@@ -1140,7 +1140,7 @@ class TestSchedule(unittest.TestCase):
   def test_multireduce_diffops_sequential(self):
     Tensor.manual_seed(0)
     x = Tensor.randn(4, 32).realize()
-    out = (x - x.max(-1, keepdim=True)).sum(-1)
+    out = (x - x.max(-1, keepdim=False)).sum(-1)
     # run_schedule(check_schedule(out, 1))
     run_schedule(check_schedule(out, 2))
     np.testing.assert_allclose(out.numpy(), (x.numpy() - x.numpy().max(axis=-1, keepdims=True)).sum(axis=-1), atol=1e-4, rtol=1e-4)
@@ -1158,7 +1158,7 @@ class TestSchedule(unittest.TestCase):
     Tensor.manual_seed(0)
     x = Tensor.randn(4, 32).realize()
     y = Tensor.randn(4, 32).realize()
-    mu = (x - x.max(axis=-1, keepdim=True)).mean(axis=-1, keepdim=True) + (y - y.max(axis=-1, keepdim=True)).mean(axis=-1, keepdim=True)
+    mu = (x - x.max(axis=-1, keepdim=False)).mean(axis=-1, keepdim=False) + (y - y.max(axis=-1, keepdim=False)).mean(axis=-1, keepdim=False)
     out = [((x - mu).square().sum(-1)/x.shape[-1]).sqrt(), ((y - mu).square().sum(-1)/y.shape[-1]).sqrt()]
     np_mu = (x.numpy() - x.numpy().max(axis=-1, keepdims=True)).mean(axis=-1, keepdims=True) + \
       (y.numpy() - y.numpy().max(axis=-1, keepdims=True)).mean(axis=-1, keepdims=True)
@@ -1374,7 +1374,7 @@ class TestSchedule(unittest.TestCase):
   def test_multireduce_simple_chase(self):
     Tensor.manual_seed(0)
     a = Tensor.randn(4, 4, 4).realize()
-    r = (a + (a.sum(0, keepdim=True) + 6)).sum(0) * 2
+    r = (a + (a.sum(0, keepdim=False) + 6)).sum(0) * 2
     b = r.sum(0) + 8
     c = r.sum(1) + 12
     np_r = (a.numpy() + (a.numpy().sum(0) + 6)).sum(0) * 2
@@ -1519,7 +1519,7 @@ class TestSchedule(unittest.TestCase):
     Tensor.manual_seed(0)
     a = Tensor.randn(3, 4, 5).realize()
     b = Tensor.randn(3, 4, 5).realize()
-    out = (a.pad(((0, 1), (0, 1), (0, 1)), value=1.0).sum(keepdim=True)+b.pad(((0, 1), (0, 1), (0, 1)), value=1.0).sum()).contiguous()
+    out = (a.pad(((0, 1), (0, 1), (0, 1)), value=1.0).sum(keepdim=False)+b.pad(((0, 1), (0, 1), (0, 1)), value=1.0).sum()).contiguous()
     # run_schedule(check_schedule(out, 1))
     run_schedule(check_schedule(out, 2))
     np.testing.assert_allclose(out.numpy(), np.pad(a.numpy(), ((0, 1), (0, 1), (0, 1)), constant_values=1.0).sum(keepdims=True) + \
@@ -1600,7 +1600,7 @@ class TestSchedule(unittest.TestCase):
 
   def test_pad_reduce_unsafe_multiview_st(self):
     P = Tensor.ones(3, 3).contiguous()
-    sums = P.sum(axis=1, keepdim=True)
+    sums = P.sum(axis=1, keepdim=False)
     P /= sums
     p = P[0]
     p = p.pad(((1, 0), ))
@@ -1689,17 +1689,17 @@ class TestSchedule(unittest.TestCase):
       np.testing.assert_allclose(compare.numpy(), good.numpy(), atol=1e-4, rtol=1e-4)
 
   def test_late_fusion_simple(self):
-    self._test_fusion([(4, 4), (4, 1)], lambda a,b:a.sum(1, keepdim=True)+b, 1)
+    self._test_fusion([(4, 4), (4, 1)], lambda a,b:a.sum(1, keepdim=False)+b, 1)
 
   def test_late_fusion_post_reshape(self):
     self._test_fusion([(4, 4), (1, 4)], lambda a,b:a.sum(1).reshape(b.shape)+b, 1)
 
   def test_late_fusion_post_permute(self):
-    self._test_fusion([(4, 6, 4), (4, 4, 1)], lambda a,b:a.sum(1, keepdim=True).permute((2, 0, 1))+b, 2)
+    self._test_fusion([(4, 6, 4), (4, 4, 1)], lambda a,b:a.sum(1, keepdim=False).permute((2, 0, 1))+b, 2)
 
   def test_late_fusion_double_transpose(self):
     self._test_fusion([(32, 16, 1)],
-                      lambda a:(a.expand(32, 16, 16).sum((2,), keepdim=True).permute((1, 0, 2))+2).permute((1, 0, 2)).contiguous(), 1)
+                      lambda a:(a.expand(32, 16, 16).sum((2,), keepdim=False).permute((1, 0, 2))+2).permute((1, 0, 2)).contiguous(), 1)
 
   def test_late_fusion_post_expand(self):
     self._test_fusion([(32, 32)], lambda a:a-a.sum(1), 2)
@@ -1983,7 +1983,7 @@ class TestIndexing(unittest.TestCase):
 
   def test_dont_fold_arange_contiguous_view(self):
     X = Tensor.randn(4, 4).realize()
-    r = (X+Tensor.arange(16).reshape(4, 4).contiguous()).sum(1, keepdim=True)
+    r = (X+Tensor.arange(16).reshape(4, 4).contiguous()).sum(1, keepdim=False)
     self.check_schedule([r], 2)
     np.testing.assert_allclose(r.numpy(), (X.numpy()+np.arange(16).reshape(4, 4)).sum(1, keepdims=True), atol=1e-5, rtol=1e-6)
 
@@ -2096,7 +2096,7 @@ class TestSwizzle(unittest.TestCase):
   def test_swizzle_failure_permute(self):
     a = Tensor.empty(45,65).T.reshape(65,1,45).pad((None,None,(0,45))).expand(65,45,90)
     b = Tensor.empty(45,65)
-    a_reduce = a.sum(axis=(2,), keepdim=True).sum(axis=(1,))
+    a_reduce = a.sum(axis=(2,), keepdim=False).sum(axis=(1,))
     b_reduce = b.sum(axis=(0,))
     t = a_reduce+b_reduce
     with Context(DONT_GROUP_REDUCES=1, DONT_REALIZE_EXPAND=1): run_schedule(check_schedule(t, 1))

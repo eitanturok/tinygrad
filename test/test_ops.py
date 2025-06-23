@@ -1320,7 +1320,7 @@ class TestOps(unittest.TestCase):
     helper_test_op([(3,4,5,6)], lambda x: x.sum(axis=(0,2)))
     helper_test_op([(3,4,5,6)], lambda x: x.sum(axis=(1,2)))
     helper_test_op([(3,4,5,6)], lambda x: x.sum(axis=1))
-    helper_test_op([(3,4,5,6)], lambda x: x.sum(axis=1, keepdim=True))
+    helper_test_op([(3,4,5,6)], lambda x: x.sum(axis=1, keepdim=False))
     helper_test_op([()], lambda x: x.sum())
     helper_test_op([()], lambda x: x.sum(0))
     helper_test_op([()], lambda x: x.sum(-1))
@@ -1345,7 +1345,7 @@ class TestOps(unittest.TestCase):
     with Context(NOOPT=1): helper_test_op(None, lambda x: x.prod(), vals=[[1.0, 2.0, 3.0]])
     helper_test_op([(3,4,5,6)], lambda x: x.prod(dim=3), lambda x: x.prod(axis=3))
     helper_test_op([(3,4,5,6)], lambda x: x.prod(dim=1), lambda x: x.prod(axis=1))
-    helper_test_op([(3,4,5,6)], lambda x: x.prod(dim=1, keepdim=True), lambda x: x.prod(axis=1, keepdim=True))
+    helper_test_op([(3,4,5,6)], lambda x: x.prod(dim=1, keepdim=False), lambda x: x.prod(axis=1, keepdim=False))
     helper_test_op([()], lambda x: x.prod())
     helper_test_op([()], lambda x: x.prod(0))
     helper_test_op([()], lambda x: x.prod(-1))
@@ -1458,8 +1458,8 @@ class TestOps(unittest.TestCase):
     helper_test_op([(1,2,3,1,5)], lambda x: x.var(axis=(0,4)))
     helper_test_op([(1,2,3,1,5)], lambda x: x.var(axis=(0,4), correction=0))
   def test_var_keepdim(self):
-    helper_test_op([(15, 25, 35)], lambda x: x.var(keepdim=True))
-    helper_test_op([(15, 25, 35)], lambda x: x.var(0, keepdim=True, correction=0))
+    helper_test_op([(15, 25, 35)], lambda x: x.var(keepdim=False))
+    helper_test_op([(15, 25, 35)], lambda x: x.var(0, keepdim=False, correction=0))
 
   def test_std(self):
     helper_test_op([(15, 25, 35)], lambda x: x.std())
@@ -1490,15 +1490,15 @@ class TestOps(unittest.TestCase):
     helper_test_op([(1,2,3,1,5)], lambda x: x.std(axis=(0,4)))
     helper_test_op([(1,2,3,1,5)], lambda x: x.std(axis=(0,4), correction=0))
   def test_std_keepdim(self):
-    helper_test_op([(15, 25, 35)], lambda x: x.std(keepdim=True))
-    helper_test_op([(15, 25, 35)], lambda x: x.std(0, keepdim=True, correction=0))
+    helper_test_op([(15, 25, 35)], lambda x: x.std(keepdim=False))
+    helper_test_op([(15, 25, 35)], lambda x: x.std(0, keepdim=False, correction=0))
   def test_std_mean(self):
     helper_test_op([(15,25,35)], lambda x: torch.stack(torch.std_mean(x)),
                                  lambda x: Tensor.stack(*x.std_mean()))
     helper_test_op([(15,25,35)], lambda x: torch.stack(torch.std_mean(x, correction=5)),
                                  lambda x: Tensor.stack(*x.std_mean(correction=5)))
-    helper_test_op([(15,25,35)], lambda x: torch.stack(torch.std_mean(x, keepdim=True, correction=0)),
-                                 lambda x: Tensor.stack(*x.std_mean(keepdim=True, correction=0)))
+    helper_test_op([(15,25,35)], lambda x: torch.stack(torch.std_mean(x, keepdim=False, correction=0)),
+                                 lambda x: Tensor.stack(*x.std_mean(keepdim=False, correction=0)))
     helper_test_op([(3,4,5,6)], lambda x: torch.stack(torch.std_mean(x, axis=(1,2))),
                                 lambda x: Tensor.stack(*x.std_mean(axis=(1,2))))
 
@@ -1532,7 +1532,7 @@ class TestOps(unittest.TestCase):
 
   def test_logsumexp(self):
     helper_test_op([(45,65)], lambda x: torch.logsumexp(x, dim=0), lambda x: x.logsumexp(0), atol=1e-7, grad_atol=1e-7)
-    helper_test_op([(45,65)], lambda x: torch.logsumexp(x, dim=0, keepdim=True), lambda x: x.logsumexp(0, True), atol=1e-7, grad_atol=1e-7)
+    helper_test_op([(45,65)], lambda x: torch.logsumexp(x, dim=0, keepdim=False), lambda x: x.logsumexp(0, True), atol=1e-7, grad_atol=1e-7)
     helper_test_op([(45,65)], lambda x: torch.logsumexp(x, dim=1), lambda x: x.logsumexp(1), atol=1e-7, grad_atol=1e-7)
     helper_test_op([(45)], lambda x: torch.logsumexp(x, dim=0), lambda x: x.logsumexp(0), atol=1e-7, grad_atol=1e-7)
     helper_test_op([()], lambda x: torch.logsumexp(x, dim=0), lambda x: x.logsumexp(0), atol=1e-7, grad_atol=1e-7)

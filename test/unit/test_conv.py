@@ -100,7 +100,7 @@ class TestConv(unittest.TestCase):
 
   def test_reduce_relu(self):
     x = Tensor.rand(1,12,16,32)
-    x = x.sum(keepdim=True).relu()
+    x = x.sum(keepdim=False).relu()
     x.numpy()
 
   def test_bias(self):

@@ -455,9 +455,9 @@ class OpenClipEncoder:
 
   def get_clip_score(self, tokens:Tensor, image:Tensor) -> Tensor:
     image_features: Tensor = self.visual(image)
-    image_features /= image_features.square().sum(-1, keepdim=True).sqrt() # Frobenius Norm
+    image_features /= image_features.square().sum(-1, keepdim=False).sqrt() # Frobenius Norm
 
     text_features = self.encode_tokens(tokens)
-    text_features /= text_features.square().sum(-1, keepdim=True).sqrt() # Frobenius Norm
+    text_features /= text_features.square().sum(-1, keepdim=False).sqrt() # Frobenius Norm
 
     return (image_features * text_features).sum(axis=-1)

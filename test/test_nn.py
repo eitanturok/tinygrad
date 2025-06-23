@@ -453,7 +453,7 @@ class TestNN(unittest.TestCase):
         self.weight = torch.nn.Parameter(torch.ones(dim)) if elementwise_affine else None
 
       def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=False) + self.eps)
 
       def forward(self, x):
         output = self._norm(x.float()).type_as(x)

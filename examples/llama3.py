@@ -133,7 +133,7 @@ def NF4Linear(block_size):
       for k, v in state_dict.items():
         if "feed_forward" in k or "attention.w" in k:
           grouped = v.reshape(-1, block_size)
-          scale = (grouped.abs().max(axis=1, keepdim=True))
+          scale = (grouped.abs().max(axis=1, keepdim=False))
           coded = ((grouped / scale).unsqueeze(-1) - CODE.to(v.device)).abs().argmin(axis=-1).cast(dtypes.uint8).flatten()
           new_state_dict[k] = coded[::2] * 2 ** 4 + coded[1::2]
           new_state_dict[k.replace(".weight", ".scale")] = scale.cast(scale_dtype)

@@ -1654,13 +1654,13 @@ class Tensor(MathTrait):
 
   # ***** reduce ops *****
 
-  def _reduce(self, op:Ops, axis:int|Sequence[int]|None=None, keepdim=False) -> Tensor:
+  def _reduce(self, op:Ops, axis:int|Sequence[int]|None=None, keepdim=True) -> Tensor:
     axis = tuple(self._resolve_dim(x) for x in (range(self.ndim) if axis is None else make_tuple(axis, 1)))
     if self.ndim == 0: axis = ()
     ret = self._apply_uop(UOp.r, op=op, axis=axis)
-    return ret if keepdim else ret.reshape(tuple(s for i,s in enumerate(self.shape) if i not in axis))
+    return ret.reshape(tuple(s for i,s in enumerate(self.shape) if i not in axis)) if keepdim else ret
 
-  def sum(self, axis:int|Sequence[int]|None=None, keepdim=False, dtype:DTypeLike|None=None) -> Tensor:
+  def sum(self, axis:int|Sequence[int]|None=None, keepdim=True, dtype:DTypeLike|None=None) -> Tensor:
     """
     Returns the sum of the elements of the tensor along the specified axis or axes.
 
@@ -1687,7 +1687,7 @@ class Tensor(MathTrait):
     ret = self.cast(sum_acc_dtype(self.dtype) if dtype is None else dtype)._reduce(Ops.ADD, axis, keepdim)
     return ret.cast(self.dtype) if dtype is None and self.dtype in (dtypes.float16, dtypes.bfloat16) else ret
 
-  def prod(self, axis:int|Sequence[int]|None=None, keepdim=False, dtype:DTypeLike|None=None) -> Tensor:
+  def prod(self, axis:int|Sequence[int]|None=None, keepdim=True, dtype:DTypeLike|None=None) -> Tensor:
     """
     Returns the product of the elements of the tensor along the specified axis or axes.
 
@@ -1713,7 +1713,7 @@ class Tensor(MathTrait):
     """
     return self.cast(dtype if dtype is not None else self.dtype)._reduce(Ops.MUL, axis, keepdim)
 
-  def max(self, axis:int|Sequence[int]|None=None, keepdim=False) -> Tensor:
+  def max(self, axis:int|Sequence[int]|None=None, keepdim=True) -> Tensor:
     """
     Returns the maximum value of the tensor along the specified axis or axes.
 
@@ -1738,7 +1738,7 @@ class Tensor(MathTrait):
 
   def _inverse(self) -> Tensor: return -self if self.is_floating_point() else ~self if dtypes.is_int(self.dtype) else self.logical_not()
 
-  def min(self, axis:int|Sequence[int]|None=None, keepdim=False) -> Tensor:
+  def min(self, axis:int|Sequence[int]|None=None, keepdim=True) -> Tensor:
     """
     Returns the minimum value of the tensor along the specified axis or axes.
 
@@ -1761,7 +1761,7 @@ class Tensor(MathTrait):
     """
     return self._inverse().max(axis=axis, keepdim=keepdim)._inverse()
 
-  def any(self, axis:int|Sequence[int]|None=None, keepdim=False) -> Tensor:
+  def any(self, axis:int|Sequence[int]|None=None, keepdim=True) -> Tensor:
     """
     Tests if any element evaluates to `True` along the specified axis or axes.
 
@@ -1783,7 +1783,7 @@ class Tensor(MathTrait):
     """
     return self.bool().max(axis, keepdim)
 
-  def all(self, axis:int|Sequence[int]|None=None, keepdim=False) -> Tensor:
+  def all(self, axis:int|Sequence[int]|None=None, keepdim=True) -> Tensor:
     """
     Tests if all element evaluates to `True` along the specified axis or axes.
 
@@ -1825,7 +1825,7 @@ class Tensor(MathTrait):
     is_nan_close = (self.isnan() & other.isnan()) & equal_nan
     return is_finite_close | is_infinite_close | is_nan_close
 
-  def mean(self, axis:int|Sequence[int]|None=None, keepdim=False) -> Tensor:
+  def mean(self, axis:int|Sequence[int]|None=None, keepdim=True) -> Tensor:
     """
     Returns the mean value of the tensor along the specified axis or axes.
 
@@ -1852,7 +1852,7 @@ class Tensor(MathTrait):
     return numerator.div(prod([cast(int, si) for si, so in zip(self.shape, self.sum(axis=axis, keepdim=True).shape) if resolve(si != so)])) \
       .cast(output_dtype)
 
-  def var(self, axis:int|Sequence[int]|None=None, keepdim=False, correction=1) -> Tensor:
+  def var(self, axis:int|Sequence[int]|None=None, keepdim=True, correction=1) -> Tensor:
     """
     Returns the variance of the tensor along the specified axis or axes.
 
@@ -1874,11 +1874,11 @@ class Tensor(MathTrait):
     print(t.var(axis=1).numpy())
     ```
     """
-    squares = (self - self.mean(axis=axis, keepdim=True)).square()
-    n = prod([si for si, so in zip(self.shape, squares.sum(axis=axis, keepdim=True).shape) if resolve(si != so)])
+    squares = (self - self.mean(axis=axis, keepdim=False)).square()
+    n = prod([si for si, so in zip(self.shape, squares.sum(axis=axis, keepdim=False).shape) if resolve(si != so)])
     return squares.sum(axis=axis, keepdim=keepdim).div(smax([0, n-correction]))
 
-  def var_mean(self, axis:int|Sequence[int]|None=None, keepdim=False, correction=1) -> tuple[Tensor, Tensor]:
+  def var_mean(self, axis:int|Sequence[int]|None=None, keepdim=True, correction=1) -> tuple[Tensor, Tensor]:
     """
     Calculates the variance and mean over the dimensions specified by dim.
     Syntactic sugar around `Tensor.var` and `Tensor.mean` to match `torch.var_mean`.
@@ -1895,7 +1895,7 @@ class Tensor(MathTrait):
     """
     return self.var(axis, keepdim, correction), self.mean(axis, keepdim)
 
-  def std(self, axis:int|Sequence[int]|None=None, keepdim=False, correction=1) -> Tensor:
+  def std(self, axis:int|Sequence[int]|None=None, keepdim=True, correction=1) -> Tensor:
     """
     Returns the standard deviation of the tensor along the specified axis or axes.
 
@@ -1919,7 +1919,7 @@ class Tensor(MathTrait):
     """
     return self.var(axis, keepdim, correction).sqrt()
 
-  def std_mean(self, axis:int|Sequence[int]|None=None, keepdim=False, correction=1) -> tuple[Tensor, Tensor]:
+  def std_mean(self, axis:int|Sequence[int]|None=None, keepdim=True, correction=1) -> tuple[Tensor, Tensor]:
     """
     Calculates the standard deviation and mean over the dimensions specified by dim.
     Syntactic sugar around `Tensor.std` and `Tensor.mean` to match `torch.std_mean`.
@@ -1987,10 +1987,10 @@ class Tensor(MathTrait):
     return state.bitcast(dtypes.uint8)[:,:(200 - rate) // 2].reshape(*self.shape[:-1], -1)
 
   def _softmax(self, axis, dtype:DTypeLike|None=None) -> tuple[Tensor, Tensor, Tensor]:
-    m = self - self.max(axis=axis, keepdim=True).detach()
+    m = self - self.max(axis=axis, keepdim=False).detach()
     if dtype is not None: m = m.cast(dtype)
     e = m.exp()
-    return m, e, e.sum(axis=axis, keepdim=True)
+    return m, e, e.sum(axis=axis, keepdim=False)
 
   def softmax(self, axis=-1, dtype:DTypeLike|None=None, _single_kernel=getenv("SINGLE_KERNEL_SOFTMAX")) -> Tensor:
     """
@@ -2041,7 +2041,7 @@ class Tensor(MathTrait):
     m, _, ss = self._softmax(axis, dtype)
     return m - ss.log()
 
-  def logsumexp(self, axis=None, keepdim=False) -> Tensor:
+  def logsumexp(self, axis=None, keepdim=True) -> Tensor:
     """
     Computes the log-sum-exp of the tensor along the specified axis or axes.
 
@@ -2065,7 +2065,7 @@ class Tensor(MathTrait):
     print(t.logsumexp(axis=1).numpy())
     ```
     """
-    m = self.max(axis=axis, keepdim=True)
+    m = self.max(axis=axis, keepdim=False)
     return (self - m).exp().sum(axis=axis, keepdim=keepdim).log() + m.squeeze(axis)
 
   def logcumsumexp(self, axis=0) -> Tensor:
@@ -2103,7 +2103,7 @@ class Tensor(MathTrait):
     ret = ((x_expand - x_cummax).exp() * mask).sum(-1).log() + x_cummax.squeeze(-1)
     return ret.reshape(*x.shape).transpose(-1, axis)
 
-  def argmax(self, axis=None, keepdim=False) -> Tensor:
+  def argmax(self, axis=None, keepdim=True) -> Tensor:
     """
     Returns the indices of the maximum value of the tensor along the specified axis.
 
@@ -2126,11 +2126,11 @@ class Tensor(MathTrait):
     """
     if axis is None: return self.flatten().argmax(0)
     axis = self._resolve_dim(axis)
-    m = self == self.max(axis=axis, keepdim=True)
+    m = self == self.max(axis=axis, keepdim=False)
     idx = m * Tensor.arange(self.shape[axis],0,-1, requires_grad=False, device=self.device).reshape(self.shape[axis], *[1]*(self.ndim-axis-1))
     return (self.shape[axis]-idx.max(axis=axis, keepdim=keepdim)).cast(dtypes.int32)
 
-  def argmin(self, axis=None, keepdim=False) -> Tensor:
+  def argmin(self, axis=None, keepdim=True) -> Tensor:
     """
     Returns the indices of the minimum value of the tensor along the specified axis.
 
@@ -2334,7 +2334,7 @@ class Tensor(MathTrait):
     if not return_indices: return pooled.max(axis)
     spatial_sz = math.prod(spatial_shape := self.shape[-len(k_):])
     idx = Tensor.arange(spatial_sz,0,-1, requires_grad=False, device=self.device).reshape(spatial_shape)
-    m = pooled == pooled.max(axis, keepdim=True)
+    m = pooled == pooled.max(axis, keepdim=False)
     idx = m * idx.pad(pads, value=dtypes.min(idx.dtype))._pool(k_, stride if stride is not None else k_, dilation)
     return pooled.max(axis), spatial_sz - idx.max(axis)
 
@@ -2409,7 +2409,7 @@ class Tensor(MathTrait):
       x = x.reshape(bs, groups, cin, 1, *oyx, *HW).expand(bs, groups, cin, rcout, *oyx, *HW).permute(0,1,3,*[4+i for i in range(len(oyx))],2,*[4+len(oyx)+i for i in range(len(HW))])  # noqa: E501
 
       # conv! broadcasted to (bs, groups, rcout, *oyx, cin, *HW)
-      ret = (x * weight.reshape(1, groups, rcout, *[1] * len(oyx), cin, *HW)).sum([-1-i for i in range(1+len(oyx))], keepdim=True, dtype=dtype).reshape(bs, cout, *oyx)  # noqa: E501
+      ret = (x * weight.reshape(1, groups, rcout, *[1] * len(oyx), cin, *HW)).sum([-1-i for i in range(1+len(oyx))], keepdim=False, dtype=dtype).reshape(bs, cout, *oyx)  # noqa: E501
       return ret if bias is None else ret.add(bias.reshape(1, -1, *[1] * len(HW)))
 
     HWI, HWO = (6,) * len(HW), (4,) * len(HW)  # F(4x4,3x3) winograd tiles
@@ -3807,8 +3807,8 @@ class Tensor(MathTrait):
     print(t.mean().item(), t.std().item())
     ```
     """
-    y = (self - self.mean(axis, keepdim=True))
-    return y.mul((y*y).mean(axis, keepdim=True).add(eps).rsqrt())
+    y = (self - self.mean(axis, keepdim=False))
+    return y.mul((y*y).mean(axis, keepdim=False).add(eps).rsqrt())
 
   def batchnorm(self, weight:Tensor|None, bias:Tensor|None, mean:Tensor, invstd:Tensor, axis:int|tuple[int, ...]=1) -> Tensor:
     """

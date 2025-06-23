@@ -2155,7 +2155,7 @@ class TestKernelOpts(unittest.TestCase):
   def test_padto_where(self):
     Tensor.manual_seed(0)
     N = 17 * 17
-    a = (Tensor.randn(N, N).realize().max(axis=0, keepdim=True) > 1).where(1, 0)
+    a = (Tensor.randn(N, N).realize().max(axis=0, keepdim=False) > 1).where(1, 0)
     helper_linearizer_opt(a.max(0), [
       [Opt(OptOps.PADTO, 0, 32)],
       [Opt(OptOps.PADTO, 0, 32), Opt(OptOps.UPCAST, 0, 8),],
@@ -2164,7 +2164,7 @@ class TestKernelOpts(unittest.TestCase):
   def test_padto_where_multioutput(self):
     Tensor.manual_seed(0)
     N = 17 * 17
-    r = Tensor.randn(N, N).realize().max(axis=0, keepdim=True) > 1
+    r = Tensor.randn(N, N).realize().max(axis=0, keepdim=False) > 1
     a0 = r.where(1, 0)
     a1 = r.where(2, 0)
     helper_linearizer_opt([a0.max(0), a1.max(0)], [

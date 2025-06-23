@@ -281,11 +281,11 @@ class GroupNormMasked:  # https://github.com/auspicious3000/contentvec/blob/d746
     if mask is None: mask = Tensor.ones_like(x)
     else: mask = mask.reshape(bsz, 1, 1, length)
     x = x * mask
-    lengths = mask.sum(axis=3, keepdim=True)
+    lengths = mask.sum(axis=3, keepdim=False)
     assert x.shape[2] == 1
-    mean_ = x.mean(dim=3, keepdim=True)
+    mean_ = x.mean(dim=3, keepdim=False)
     mean = mean_ * length / lengths
-    var = (((x.std(axis=3, keepdim=True) ** 2) + mean_**2) * length / lengths - mean**2) + self.eps
+    var = (((x.std(axis=3, keepdim=False) ** 2) + mean_**2) * length / lengths - mean**2) + self.eps
     return x.add(-mean).div(var.sqrt()).reshape(bsz, n_c, length).mul(self.weight.reshape(1,-1,1)).add(self.bias.reshape(1,-1,1))
 
 class Synthesizer:
