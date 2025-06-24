@@ -7,6 +7,8 @@ from tinygrad.helpers import getenv, IMAGE, DEBUG, CI, Context, TRANSCENDENTAL, 
 from tinygrad import Tensor, Device, dtypes
 from tinygrad.tensor import _to_np_dtype
 from tinygrad.device import is_dtype_supported
+from icecream import install
+install()
 
 if getenv("TINY_BACKEND"):
   import tinygrad.frontend.torch # noqa: F401 # pylint: disable=unused-import

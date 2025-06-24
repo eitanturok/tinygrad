@@ -40,8 +40,6 @@ class Kernel:
     self.ast = ast
 
     self.opts = opts if opts is not None else Device[Device.DEFAULT].renderer
-    # verify AST matches the spec
-    if __debug__: type_verify(list(self.ast.toposort()), ast_spec)
 
     self.reduceops = [x for x in self.ast.toposort() if x.op is Ops.REDUCE_AXIS]
 
@@ -61,10 +59,16 @@ class Kernel:
     # add a shapetracker to the end to track the full shape, with 0 strides so it can merge
     self.sts.append(ShapeTracker.from_shape(tuple([smax(*s) for s in zip(*[x.shape for x in self.sts])]), (0,)*self.shape_len))
 
+    ic(self.sts, self.full_shape, self.output_shape)
+
     # move all reduce axes to the end
     reduce = list(enumerate(zip(self.full_shape, self.output_shape)))
     permute = tuple([i for i,(s,n) in reduce if not resolve(s != n)] + [i for i,(s,n) in reduce if resolve(s != n)])
     self.reshape_and_permute(None, permute)
+    ic(reduce, permute, self.sts)
+
+    # verify AST matches the spec
+    if __debug__: type_verify(list(self.ast.toposort()), ast_spec)
 
     # parameters for optimization
     self.applied_opts: list[Opt] = []
