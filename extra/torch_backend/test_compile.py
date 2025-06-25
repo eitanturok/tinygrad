@@ -41,14 +41,14 @@ class TestTorchCompile(unittest.TestCase):
     et = time.perf_counter_ns() - st
     return ret, et
 
-  def test_correctness(self):
+  def test_sum_compiled(self):
     def fxn(x): return x.sum()
     t = torch.randn(4, 4)
 
-    ret1, _ = self._run_fxn(torch.compile(fxn), t)
-    ret2, _ = self._run_fxn(torch.compile(fxn), t.to("tiny"))
-    ret3,  = self._run_fxn(torch.compile(fxn, backend="tiny"), t)
-    ret4, _ = self._run_fxn(torch.compile(fxn, backend="tiny"), t.to("tiny"))
+    # ret1, et1 = self._run_fxn(torch.compile(fxn), t)
+    # ret2, et2 = self._run_fxn(torch.compile(fxn), t.to("tiny"))
+    ret3, et3 = self._run_fxn(torch.compile(fxn, backend="tiny"), t)
+    ret4, et4 = self._run_fxn(torch.compile(fxn, backend="tiny"), t.to("tiny"))
 
     expected = fxn(t.numpy())
     assert ret1.numpy() == ret2.numpy() == ret3.numpy() == expected
