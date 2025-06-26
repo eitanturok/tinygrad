@@ -35,6 +35,7 @@ class Kernel:
   def __init__(self, ast:UOp, opts:Optional[Renderer]=None):
     assert ast.op is Ops.SINK, ast.op
     self.ast = ast
+    ic("kernel.__init__", self.ast)
 
     self.opts = opts if opts is not None else Device[Device.DEFAULT].renderer
     # verify AST matches the spec

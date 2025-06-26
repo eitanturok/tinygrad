@@ -6,11 +6,12 @@ from tinygrad.uop import Ops, GroupOp
 from tinygrad.uop.mathtraits import MathTrait
 from tinygrad.dtype import ConstType, ImageDType, dtypes, DType, truncate
 from tinygrad.helpers import ContextVar, all_int, prod, getenv, all_same, Context, partition, temp, unwrap, T, argfix, Metadata, flatten
-from tinygrad.helpers import PICKLE_BUFFERS, PROFILE, dedup, cdiv, cmod, diskcache_put, to_function_name
+from tinygrad.helpers import PICKLE_BUFFERS, PROFILE, VIEW_CONST, dedup, cdiv, cmod, diskcache_put, to_function_name
 if TYPE_CHECKING:
   from tinygrad.shape.shapetracker import ShapeTracker
   from tinygrad.device import Buffer, MultiBuffer
-
+from icecream import install
+install()
 # https://en.wikipedia.org/wiki/Identity_element
 def identity_element(op:Ops, dt:DType) -> ConstType: return dtypes.as_const({Ops.ADD:0, Ops.MUL:1, Ops.MAX:dtypes.min(dt)}[op], dt)
 
@@ -240,7 +241,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     if arg in {Ops.CMPLT, Ops.CMPNE}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
     return UOp(arg, out_dtype, (self,)+src)
   @staticmethod
-  def const(dtype:DType, b:ConstLike, device:str|tuple[str, ...]|None=None, shape:tuple[sint, ...]|None=None):
+  def const_old(dtype:DType, b:ConstLike, device:str|tuple[str, ...]|None=None, shape:tuple[sint, ...]|None=None):
     if isinstance(b, UOp): return b.unbind()[0] if b.op is Ops.BIND else b
     if isinstance(b, tuple) and all_same(b): b = b[0]  # doesn't have to be a VCONST if they are all the same
     ret = UOp(Ops.VCONST if isinstance(b, tuple) else Ops.CONST, dtype, arg=dtypes.as_const(b, dtype))
@@ -250,6 +251,21 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     if device is not None:
       ret = ret.replace(src=(UOp(Ops.DEVICE, arg=device).view(unwrap(ret.st)),))
     return ret
+  @staticmethod
+  def const_new(dtype:DType, b:ConstLike, device:str|tuple[str, ...]|None=None, shape:tuple[sint, ...]|None=None):
+    if isinstance(b, UOp): return b.unbind()[0] if b.op is Ops.BIND else b
+    if isinstance(b, tuple) and all_same(b): b = b[0]  # doesn't have to be a VCONST if they are all the same
+    ret = UOp(Ops.VCONST if isinstance(b, tuple) else Ops.CONST, dtype, arg=dtypes.as_const(b, dtype))
+    if device is not None:
+      ret = ret.replace(src=(UOp(Ops.DEVICE, arg=device),))
+    if shape is not None:
+      from tinygrad.shape.shapetracker import ShapeTracker
+      st = ShapeTracker.from_shape(()).reshape((1,)*len(shape)).expand(shape)
+      ret = ret.view(st)
+    return ret
+  @staticmethod
+  def const(dtype:DType, b:ConstLike, device:str|tuple[str, ...]|None=None, shape:tuple[sint, ...]|None=None):
+    return UOp.const_new(dtype, b, device, shape) if VIEW_CONST else UOp.const_old(dtype, b, device, shape)
   def valid(self): return UOp.where(UOp(Ops.VALID, dtypes.bool, (UOp(Ops.VIEW, arg=self.st),)), self.const_like(self.base.arg), 0)
   @staticmethod
   def range(dtype:DType, end:sint, idx:int): return UOp(Ops.RANGE, dtype=dtype, src=(sint_to_uop(end),), arg=idx)
@@ -564,6 +580,7 @@ def exec_alu(op:Ops, dtype:DType, operands, truncate_output=True):
 # ***** uop helpers *****
 
 def print_uops(uops:list[UOp]):
+  print(f"{'idx':>4} {'u.op':<20}  {'u.dtype':<30} {'u.src':<32} u.arg")
   for i,u in enumerate(uops):
     formatted_parents = [(uops.index(x) if x.op is not Ops.CONST else f"{x.arg}") if x in uops else "--" for x in u.src]
     print(f"{i:4d} {str(u.op):20s}: {str(u.dtype):30s} " f"{str(formatted_parents):32s} {u.arg}")

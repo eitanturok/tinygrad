@@ -25,9 +25,10 @@ def get_program(ast:UOp, renderer:Renderer) -> ProgramSpec:
   Returns:
     The ProgramSpec of the program.
   """
-
   if getenv("VIZ"): graph_rewrite(ast, PatternMatcher([]), name="View Base AST")
+  ic("before get_optimized_ast", ast)
   modified_ast = get_optimized_ast(ast, renderer) if ast.arg is None or ast.arg.opts_to_apply is not None else ast
+  ic("after get_optimized_ast", modified_ast)
   if __debug__: type_verify(list(modified_ast.toposort()))
 
   # linearize

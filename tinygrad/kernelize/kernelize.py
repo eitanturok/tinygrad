@@ -275,7 +275,8 @@ def check_load_st(glbl:UOp, view:UOp):
 fix_kernel_ops = PatternMatcher([
   # remove CONTIGUOUS/DEVICE from kernel AST
   (UPat((Ops.CONTIGUOUS, Ops.MSELECT), src=(UPat.var("x"),)), lambda x: x),
-  (UPat(Ops.VIEW, src=(UPat(Ops.DEVICE),), name="view"), lambda view: view.replace(src=())),
+  (UPat(Ops.VIEW, src=(UPat(Ops.DEVICE),), name="view"), lambda view: view.replace(src=())), # todo: remove
+  (UPat(Ops.CONST, src=(UPat(Ops.DEVICE),), name="const"), lambda const: const.replace(src=())),
   # no ImageDType after index
   (UPat(GroupOp.All-{Ops.DEFINE_GLOBAL, Ops.VIEW}, name="x"), lambda x: x.replace(dtype=x.dtype.base) if isinstance(x.dtype, ImageDType) else None),
   # if this kernel also assigns to the loaded buffer, ensure we can index it correctly
@@ -432,7 +433,7 @@ def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   Returns:
     Map transforming each UOp in the sink to the Ops.KERNEL graph.
   """
-
+  ic("before kernelize map", sink)
   # multi + merge_views + simplify
   tensor_map = graph_rewrite_map(sink, multi_pm+do_fuse+merge_views+sym+replace_contiguous, ctx={}, name="merge_views")
 
