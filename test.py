@@ -32,33 +32,6 @@ def test2():
 
 
     VIEW_CONST=0
-    ic| "kernel.__init__": 'kernel.__init__'
-    self.ast: UOp(Ops.SINK, dtypes.void, arg=None, src=(
-                UOp(Ops.STORE, dtypes.void, arg=None, src=(
-                  UOp(Ops.VIEW, dtypes.int.ptr(1), arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=(
-                    UOp(Ops.DEFINE_GLOBAL, dtypes.int.ptr(1), arg=0, src=()),)),
-                  UOp(Ops.CONST, dtypes.int, arg=1, src=(
-                    UOp(Ops.VIEW, dtypes.void, arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=()),)),)),))
-
-    VIEW_CONST=1
-    ic| "kernel.__init__": 'kernel.__init__'
-    self.ast: UOp(Ops.SINK, dtypes.void, arg=None, src=(
-                UOp(Ops.STORE, dtypes.void, arg=None, src=(
-                  UOp(Ops.VIEW, dtypes.void.ptr(1), arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=(
-                    UOp(Ops.DEFINE_GLOBAL, dtypes.void.ptr(1), arg=0, src=()),)),
-                  UOp(Ops.CONST, dtypes.int, arg=1, src=()),)),))
-
-    CHANGE: now Ops.VIEW has the correct dtype
-    VIEW_CONST=1
-    ic| "kernel.__init__": 'kernel.__init__'
-    self.ast: UOp(Ops.SINK, dtypes.void, arg=None, src=(
-                UOp(Ops.STORE, dtypes.void, arg=None, src=(
-                  UOp(Ops.VIEW, dtypes.int.ptr(1), arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=(
-                    UOp(Ops.DEFINE_GLOBAL, dtypes.int.ptr(1), arg=0, src=()),)),
-                  UOp(Ops.CONST, dtypes.int, arg=1, src=()),)),))
-
-
-    VIEW_CONST=0
     ic| "before kernelize map": 'before kernelize map'
     sink: UOp(Ops.SINK, dtypes.void, arg=None, src=(
             UOp(Ops.COPY, dtypes.int, arg=None, src=(
@@ -68,7 +41,16 @@ def test2():
                     UOp(Ops.DEVICE, dtypes.void, arg='METAL', src=()),)),)),)),
               UOp(Ops.DEVICE, dtypes.void, arg='CPU', src=()),)),))
 
+    ic| "kernel.__init__": 'kernel.__init__'
+    self.ast: UOp(Ops.SINK, dtypes.void, arg=None, src=(
+                UOp(Ops.STORE, dtypes.void, arg=None, src=(
+                  UOp(Ops.VIEW, dtypes.int.ptr(1), arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=(
+                    UOp(Ops.DEFINE_GLOBAL, dtypes.int.ptr(1), arg=0, src=()),)),
+                  UOp(Ops.CONST, dtypes.int, arg=1, src=(
+                    UOp(Ops.VIEW, dtypes.void, arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=()),)),)),))
+
     VIEW_CONST=1
+
     ic| "before kernelize map": 'before kernelize map'
     sink: UOp(Ops.SINK, dtypes.void, arg=None, src=(
             UOp(Ops.COPY, dtypes.int, arg=None, src=(
@@ -77,6 +59,13 @@ def test2():
                   UOp(Ops.CONST, dtypes.int, arg=1, src=(
                     UOp(Ops.DEVICE, dtypes.void, arg='METAL', src=()),)),)),)),
               UOp(Ops.DEVICE, dtypes.void, arg='CPU', src=()),)),))
+
+    ic| "kernel.__init__": 'kernel.__init__'
+    self.ast: UOp(Ops.SINK, dtypes.void, arg=None, src=(
+                UOp(Ops.STORE, dtypes.void, arg=None, src=(
+                  UOp(Ops.VIEW, dtypes.int.ptr(1), arg=ShapeTracker(views=(View(shape=(), strides=(), offset=0, mask=None, contiguous=True),)), src=(
+                    UOp(Ops.DEFINE_GLOBAL, dtypes.int.ptr(1), arg=0, src=()),)),
+                  UOp(Ops.CONST, dtypes.int, arg=1, src=()),)),))
     """
 
 
