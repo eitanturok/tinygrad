@@ -247,6 +247,7 @@ class TestFetchResume(unittest.TestCase):
       requests.append(req)
       # first request: return partial content then fail
       if len(requests) == 1: return self._mock_response(200, 2048, [content[:512], ConnectionResetError()])
+      # second request: return remaining content
       return self._mock_response(206, 1536, [content[512:], b''])
 
     with patch('urllib.request.urlopen', side_effect=urlopen):
