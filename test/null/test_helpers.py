@@ -1,5 +1,5 @@
 import ctypes, gzip, unittest, timeit, pickle, urllib, socket
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from tinygrad import Variable
 from tinygrad.helpers import Context, ContextVar, argfix, colored, word_wrap, is_numpy_ndarray, mv_address, get_contraction, count, all_same
 from tinygrad.helpers import merge_dicts, strip_parens, prod, round_up, fetch, fully_flatten, from_mv, to_mv, polyN, time_to_str, cdiv, cmod, getbits
@@ -232,6 +232,28 @@ class TestFetchRetries(unittest.TestCase):
   def test_fetch_value_error_no_retry(self): self._test_non_retryable(ValueError("invalid url"))
   def test_fetch_permission_error_no_retry(self): self._test_non_retryable(PermissionError())
 
+class TestFetchResume(unittest.TestCase):
+  def _mock_response(self, status, length, chunks):
+    r = MagicMock(status=status, headers={'content-length': str(length)}, read=MagicMock(side_effect=chunks))
+    r.__enter__, r.__exit__ = MagicMock(return_value=r), MagicMock(return_value=False)
+    return r
+
+  def test_fetch_resume_after_connection_error(self):
+    content = b"X" * 2048
+    requests = []
+
+    # mock urlopen responses
+    def urlopen(req, timeout=None):
+      requests.append(req)
+      # first request: return partial content then fail
+      if len(requests) == 1: return self._mock_response(200, 2048, [content[:512], ConnectionResetError()])
+      return self._mock_response(206, 1536, [content[512:], b''])
+
+    with patch('urllib.request.urlopen', side_effect=urlopen):
+      result = fetch('http://example.com/file', allow_caching=False, retries=1)
+      self.assertEqual(result.read_bytes(), content, "file should contain full content")
+      self.assertEqual(len(requests), 2, "should make exactly 2 requests")
+      self.assertEqual(requests[1].headers.get('Range'), 'bytes=512-', "second request should include Range header from resuming download")
 
 class TestFullyFlatten(unittest.TestCase):
   def test_fully_flatten(self):

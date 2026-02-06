@@ -394,33 +394,44 @@ def _is_retryable(e: Exception) -> bool:
   return isinstance(e, (TimeoutError, ConnectionError, socket.gaierror))
 
 def fetch(url:str, name:pathlib.Path|str|None=None, subdir:str|None=None, gunzip:bool=False,
-          allow_caching=not getenv("DISABLE_HTTP_CACHE"), headers:dict[str, str]={}, retries:int=3) -> pathlib.Path:
+          allow_caching=not getenv("DISABLE_HTTP_CACHE"), headers:dict[str, str]={}, timeout:int=10, retries:int=3) -> pathlib.Path:
   import urllib.request
   if url.startswith(("/", ".")): return pathlib.Path(url)
   if name is not None and (isinstance(name, pathlib.Path) or '/' in name): fp = pathlib.Path(name)
   else:
     hh = "_"+hashlib.md5(("\n".join(f"{k.strip()}:{v.strip()}" for k,v in sorted(headers.items()))).encode("utf-8")).hexdigest() if headers else ""
     fp = _ensure_downloads_dir() / (subdir or "") / ((name or hashlib.md5(url.encode('utf-8')).hexdigest()) + hh + (".gunzip" if gunzip else ""))
-  if not fp.is_file() or not allow_caching:
-    (_dir := fp.parent).mkdir(parents=True, exist_ok=True)
+  if fp.is_file() and allow_caching: return fp
+  (_dir := fp.parent).mkdir(parents=True, exist_ok=True)
+  with tempfile.NamedTemporaryFile(dir=_dir, delete=False) as tmp_f: tmp_path = pathlib.Path(tmp_f.name)
+
+  try:
     for attempt in range(retries+1):
       try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tinygrad 0.12.0", **headers}), timeout=10) as r:
+        current_bytes = tmp_path.stat().st_size  # resume from partial download
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tinygrad 0.12.0", "Range": f"bytes={current_bytes}-", **headers}), timeout=timeout) as r:
           assert r.status in {200, 206}, r.status
           length = int(r.headers.get('content-length', 0)) if not gunzip else None
           readfile = gzip.GzipFile(fileobj=r) if gunzip else r
           progress_bar:tqdm = tqdm(total=length, unit='B', unit_scale=True, desc=f"{url}", disable=CI)
-          with tempfile.NamedTemporaryFile(dir=_dir, delete=False) as f:
+          progress_bar.update(current_bytes)
+          with open(tmp_path, "ab") as f:
             while chunk := readfile.read(16384): progress_bar.update(f.write(chunk))
-            f.close()
-            pathlib.Path(f.name).rename(fp)
           progress_bar.update(close=True)
-          if length and (file_size:=os.stat(fp).st_size) < length: raise RuntimeError(f"fetch size incomplete, {file_size} < {length}")
         break
       except Exception as e:
         if not _is_retryable(e) or attempt == retries: raise
-        if DEBUG >= 2: print(f'fetch {url} {e}, retrying...')
-        time.sleep(0.1 * 2**attempt) # exponential backoff
+        # respect Retry-After header on 429/503, otherwise exponential backoff
+        wait_time = int(unwrap(e.headers.get('Retry-After'))) if isinstance(e, urllib.error.HTTPError) and e.code in (429, 503) and e.headers else 0.1 * 2**attempt
+        if DEBUG >= 2: print(f'fetch {url} {e}, retrying in {wait_time} secs...')
+        time.sleep(wait_time)
+    # verify download entire file
+    if length and (file_size:=tmp_path.stat().st_size) < current_bytes + length:
+      raise RuntimeError(f"fetch size incomplete, {file_size} < {current_bytes + length}")
+    tmp_path.rename(fp)
+  except Exception:  # delete temp file on any failure
+    tmp_path.unlink(missing_ok=True)
+    raise
   return fp
 
 # *** Exec helpers
