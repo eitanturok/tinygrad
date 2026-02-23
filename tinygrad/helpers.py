@@ -394,7 +394,7 @@ def _is_retryable(e: Exception) -> bool:
   return isinstance(e, (TimeoutError, ConnectionError, socket.gaierror))
 
 def fetch(url:str, name:pathlib.Path|str|None=None, subdir:str|None=None, gunzip:bool=False,
-          allow_caching=not getenv("DISABLE_HTTP_CACHE"), headers:dict[str, str]={}, timeout:int=10, retries:int=3) -> pathlib.Path:
+          allow_caching=not getenv("DISABLE_HTTP_CACHE"), headers:dict[str, str]={}, retries:int=3) -> pathlib.Path:
   import urllib.request
   if url.startswith(("/", ".")): return pathlib.Path(url)
   if name is not None and (isinstance(name, pathlib.Path) or '/' in name): fp = pathlib.Path(name)
@@ -404,12 +404,11 @@ def fetch(url:str, name:pathlib.Path|str|None=None, subdir:str|None=None, gunzip
   if fp.is_file() and allow_caching: return fp
   (_dir := fp.parent).mkdir(parents=True, exist_ok=True)
   with tempfile.NamedTemporaryFile(dir=_dir, delete=False) as tmp_f: tmp_path = pathlib.Path(tmp_f.name)
-
   try:
     for attempt in range(retries+1):
       try:
         current_bytes = tmp_path.stat().st_size  # resume from partial download
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tinygrad 0.12.0", "Range": f"bytes={current_bytes}-", **headers}), timeout=timeout) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tinygrad 0.12.0", "Range": f"bytes={current_bytes}-", **headers}), timeout=10) as r:
           assert r.status in {200, 206}, r.status
           length = int(r.headers.get('content-length', 0)) if not gunzip else None
           readfile = gzip.GzipFile(fileobj=r) if gunzip else r
@@ -429,7 +428,8 @@ def fetch(url:str, name:pathlib.Path|str|None=None, subdir:str|None=None, gunzip
     if length and (file_size:=tmp_path.stat().st_size) < current_bytes + length:
       raise RuntimeError(f"fetch size incomplete, {file_size} < {current_bytes + length}")
     tmp_path.rename(fp)
-  except Exception:  # delete temp file on any failure
+  # delete temp file on any failure
+  except Exception:
     tmp_path.unlink(missing_ok=True)
     raise
   return fp
