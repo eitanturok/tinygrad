@@ -5,6 +5,7 @@ from tinygrad import Tensor, nn, UOp, TinyJit, getenv, function
 from tinygrad.uop.ops import resolve
 from tinygrad.helpers import partition, DEBUG, Timing, GlobalCounters, stderr_log, colored, Context
 from tinygrad.viz.serve import TCPServerWithReuse, HTTPRequestHandler
+from icecream import install; install()
 
 class SimpleTokenizer:
   def __init__(self, normal_tokens:dict[str, int], special_tokens:dict[str, int], preset:str="llama3"):
@@ -379,6 +380,7 @@ class Transformer:
     x = self.token_embd(tokens).float()                   # (B, T, D)
     for block in self.blk: x = block(x, start_pos)
     logits = self.output(self.output_norm(x))[:, -1, :]
+    if hasattr(self, "processor"): logits = self.processor(tokens, logits, self._cached_tokens)
     # Gumbel-max trick: argmax(logits/temp - log(-log(uniform))) is equivalent to sampling from softmax(logits/temp)
     return (logits / temperature.maximum(1e-12) - (Tensor.rand_like(logits).maximum(1e-12).log().neg()).log()).argmax(-1, keepdim=True)
 
@@ -625,6 +627,11 @@ if __name__ == "__main__":
   tok = SimpleTokenizer.from_gguf_kv(kv)
   bos_id: int|None = kv.get('tokenizer.ggml.bos_token_id') if kv.get('tokenizer.ggml.add_bos_token', True) else None
   eos_id: int = kv['tokenizer.ggml.eos_token_id']
+
+  # structured generation
+  from structured_generation import RegexLogitsProcessor
+  regex_string = "^\d*(\.\d+)?$"
+  model.processor = RegexLogitsProcessor(regex_string, tok, eos_token_id=eos_id)
 
   # warmup the JIT
   if args.warmup or args.serve:
