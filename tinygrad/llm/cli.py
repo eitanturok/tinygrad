@@ -199,6 +199,15 @@ def main():
   # get tokenizer
   tok = SimpleTokenizer.from_gguf_kv(kv)
 
+  from pydantic import BaseModel
+  from .structured_generation import RegexLogitsProcessor, JSONLogitsProcessor
+  # model.processor = RegexLogitsProcessor("^[0-9]*(\.[0-9]+)?$", tok, eos_token_id=tok.eos_id)
+  class User(BaseModel):
+    name: str
+    last_name: str
+    id: int
+  model.processor = JSONLogitsProcessor(User, tok, eos_token_id=tok.eos_id)
+
   # warmup the JIT
   if args.warmup or args.serve:
     # run 2 tokens through the model twice to capture the JIT before serving
