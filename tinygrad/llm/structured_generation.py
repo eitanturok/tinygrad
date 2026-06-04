@@ -67,6 +67,28 @@ class LogitsProcessor:
                 self._guide_states[k] = self.guide.next_state(self._guide_states[prev_k], seq[end-1])
         return self._guide_states[tuple(seq)]
 
+    def _debug_transition_check(self, gen_seq: list[int], fsm_state: int) -> None:
+        if len(gen_seq) == 0:
+            return
+        prev_seq = gen_seq[:-1]
+        prev_key = tuple(prev_seq)
+        if prev_key not in self._guide_states:
+            self._walk_to_state(prev_seq)
+        prev_state = self._guide_states[prev_key]
+        sampled_token = gen_seq[-1]
+        allowed = self.guide.index.get_allowed_tokens(prev_state)
+        allowed_set = None if allowed is None else set(allowed)
+        sampled_allowed = allowed_set is None or sampled_token in allowed_set
+        transition_state = self.guide.next_state(prev_state, sampled_token)
+        print(
+            f"[DBG] transition prev_state={prev_state} sampled={sampled_token} {self._decode(sampled_token)} "
+            f"allowed={sampled_allowed} expected_state={transition_state} actual_state={fsm_state}",
+            flush=True,
+        )
+        if not sampled_allowed:
+            preview = [] if allowed is None else [(tid, self._decode(tid)) for tid in allowed[:20]]
+            print(f"[DBG]   sampled token was not allowed, allowed preview={preview}", flush=True)
+
     def __call__(self, input_ids:Tensor, logits:Tensor, seq_tokens: list[int]) -> Tensor:
         assert dtypes.is_int(input_ids.dtype), f"input_ids must be integers but {input_ids.dtype=}"
         assert logits.shape[:-1] == input_ids.shape[:-1], f"logits and input_ids must have the same dims except for the last dim: {logits.shape=} {input_ids.shape=}"
@@ -111,6 +133,7 @@ class LogitsProcessor:
             self._walk_to_state(gen_seq)
         fsm_state = self._guide_states[curr_key]
         print(f"[DBG] fsm_state={fsm_state}", flush=True)
+        self._debug_transition_check(gen_seq, fsm_state)
 
         fsm_states: list[int] = [fsm_state] * bs
         print(f"[DBG] fsm_states={fsm_states}", flush=True)
