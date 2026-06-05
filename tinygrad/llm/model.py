@@ -142,25 +142,11 @@ class KVCache:
   def __init__(self, page_size:int, max_pages:int, n_kv_heads:int, head_dim:int, max_context:int, device:str|None=None):
     self.max_pages, self.page_size = max_pages, page_size
     self.pages, self.free_pages = [], set(range(max_pages))
-    self.cache_kv = Tensor.empty(2, max_pages, n_kv_heads, page_size, head_dim, device=device)
-    # flat staging buffer: write here with assign (concrete indices), read from here in @function
-    self.kv_flat = Tensor.zeros(2, 1, n_kv_heads, max_context, head_dim, device=device).contiguous()
+    self.cache_kv = Tensor.zeros(2, 1, n_kv_heads, max_context, head_dim, device=device).contiguous()
   def allocate(self, start_pos:int, T:int):
     new_pages = math.ceil((start_pos + T) / self.page_size)
     assert new_pages <= self.max_pages, f"Need {new_pages} pages but max_pages={self.max_pages}"
     while len(self.pages) < new_pages: self.pages.append(self.free_pages.pop())
-  def write(self, k:Tensor, v:Tensor, start_pos:int, T:int):
-    # write into paged cache_kv and flat kv_flat simultaneously
-    first_page, last_page = start_pos // self.page_size, math.ceil((start_pos + T) / self.page_size)
-    for page_idx, page in enumerate(self.pages[first_page:last_page], start=first_page):
-      slot_idx = start_pos % self.page_size if page_idx == first_page else 0
-      offset = page_idx * self.page_size - start_pos + slot_idx
-      num_tokens = min(self.page_size - slot_idx, T - offset)
-      k_page, v_page = k[:, :, offset:offset+num_tokens, :], v[:, :, offset:offset+num_tokens, :]
-      self.cache_kv[:, page, :, slot_idx:slot_idx+num_tokens, :].assign(Tensor.stack(k_page.squeeze(0), v_page.squeeze(0)))
-    # write contiguously to flat buffer for fast in-function reads
-    self.kv_flat[0, :, :, start_pos:start_pos+T, :].assign(k)
-    self.kv_flat[1, :, :, start_pos:start_pos+T, :].assign(v)
 
 class TransformerBlock(FFNBlock):
   def __init__(self, config:TransformerConfig):
@@ -192,7 +178,7 @@ class TransformerBlock(FFNBlock):
     q = apply_rope(q[..., :self.config.rope_dim], self.freqs_cis[start_pos:start_pos+T]).cat(q[..., self.config.rope_dim:], dim=-1)
     k = apply_rope(k[..., :self.config.rope_dim], self.freqs_cis[start_pos:start_pos+T]).cat(k[..., self.config.rope_dim:], dim=-1)
 
-    assigned_kv = Tensor(self.kv_cache.kv_flat.uop.after(self.kv_cache.kv_flat[:, :, :, start_pos:start_pos+T, :].uop.store(Tensor.stack(k, v).uop)))
+    assigned_kv = Tensor(self.kv_cache.cache_kv.uop.after(self.kv_cache.cache_kv[:, :, :, start_pos:start_pos+T, :].uop.store(Tensor.stack(k, v).uop)))
     k_full = assigned_kv[0, :, :, 0:start_pos+T, :]
     v_full = assigned_kv[1, :, :, 0:start_pos+T, :]
     mask = Tensor.full((1, 1, T, start_pos+T), float("-inf"), dtype=x.dtype, buffer=False).triu(start_pos+1) \
@@ -210,11 +196,12 @@ class TransformerBlock(FFNBlock):
     if not hasattr(self, "kv_cache"):
       self.kv_cache = KVCache(self.config.page_size, self.config.max_pages, self.config.n_kv_heads, self.config.head_dim, self.config.max_context, device=x.device)
       self.freqs_cis = precompute_freqs_cis(self.config.rope_dim, self.config.max_context, self.config.rope_theta, device=x.device)
-    self.kv_cache.allocate(self._start_pos, self._T)
 
   def __call__(self, x:Tensor, start_pos:int|UOp):
-    self._start_pos = start_pos.val if hasattr(start_pos, 'val') else start_pos
-    self._T = x.shape[1].val if hasattr(x.shape[1], 'val') else x.shape[1]
+    self._init_state(x)
+    sp = start_pos.val if hasattr(start_pos, 'val') else start_pos
+    T = x.shape[1].val if hasattr(x.shape[1], 'val') else x.shape[1]
+    self.kv_cache.allocate(sp, T)
     return super().__call__(x, start_pos)
 
 
