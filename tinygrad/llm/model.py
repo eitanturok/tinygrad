@@ -126,11 +126,11 @@ class FFNBlock:
   def _reusable_prefix_len(self, prefix_len:int, cached_len:int) -> int: return prefix_len
   # return writes that reset this block's state after a cache mismatch
   def _state_reset_ops(self) -> list[Tensor]: return []
-  def _init_state(self, x:Tensor): raise NotImplementedError
+  def _init_state(self, x:Tensor, start_pos:int|UOp): raise NotImplementedError
   def _attention(self, x:Tensor, start_pos:int|UOp) -> Tensor: raise NotImplementedError
 
   def __call__(self, x: Tensor, start_pos: int|UOp):
-    self._init_state(x)
+    self._init_state(x, start_pos)
     # we pass in the weights implicitly so we unpack the GGUF on the fly
     @function(precompile=True, allow_implicit=True)
     def _run(x:Tensor, start_pos:int|UOp):
@@ -138,11 +138,11 @@ class FFNBlock:
       return (h + self._feed_forward(self.ffn_norm(h))).contiguous()
     return _run(x, start_pos)
 
-class KVCache:
+class PagedKVCache:
   def __init__(self, page_size:int, max_pages:int, n_kv_heads:int, head_dim:int, max_context:int, device:str|None=None):
     self.max_pages, self.page_size = max_pages, page_size
     self.pages, self.free_pages = [], set(range(max_pages))
-    self.cache_kv = Tensor.zeros(2, 1, n_kv_heads, max_context, head_dim, device=device).contiguous()
+    self.cache = Tensor.zeros(2, 1, n_kv_heads, max_context, head_dim, device=device).contiguous()
   def allocate(self, start_pos:int, T:int):
     new_pages = math.ceil((start_pos + T) / self.page_size)
     assert new_pages <= self.max_pages, f"Need {new_pages} pages but max_pages={self.max_pages}"
@@ -170,40 +170,35 @@ class TransformerBlock(FFNBlock):
     if self.config.attn_output_gate:
       qg = q.reshape(B, T, self.config.n_heads, 2, self.config.head_dim)
       q, gate = qg[:, :, :, 0, :], qg[:, :, :, 1, :].reshape(B, T, self.config.n_heads * self.config.head_dim)
-    q = q.reshape(B, T, self.config.n_heads,    self.config.head_dim).transpose(1, 2)
-    k = k.reshape(B, T, self.config.n_kv_heads, self.config.head_dim).transpose(1, 2)
-    v = v.reshape(B, T, self.config.n_kv_heads, self.config.head_dim).transpose(1, 2)
+    q = q.reshape(B, T, self.config.n_heads,    self.config.head_dim).transpose(1, 2)  # (B,H,T,Hd)
+    k = k.reshape(B, T, self.config.n_kv_heads, self.config.head_dim).transpose(1, 2)  # (B,KvH,T,Hd)
+    v = v.reshape(B, T, self.config.n_kv_heads, self.config.head_dim).transpose(1, 2)  # (B,KvH,T,Hd)
     if self.config.qk_norm == self.config.head_dim: q, k = self.attn_q_norm(q), self.attn_k_norm(k)
 
     q = apply_rope(q[..., :self.config.rope_dim], self.freqs_cis[start_pos:start_pos+T]).cat(q[..., self.config.rope_dim:], dim=-1)
     k = apply_rope(k[..., :self.config.rope_dim], self.freqs_cis[start_pos:start_pos+T]).cat(k[..., self.config.rope_dim:], dim=-1)
 
-    assigned_kv = Tensor(self.kv_cache.cache_kv.uop.after(self.kv_cache.cache_kv[:, :, :, start_pos:start_pos+T, :].uop.store(Tensor.stack(k, v).uop)))
-    k_full = assigned_kv[0, :, :, 0:start_pos+T, :]
-    v_full = assigned_kv[1, :, :, 0:start_pos+T, :]
+    assigned_kv = Tensor(self.kv.cache.uop.after(self.kv.cache[:, :, :, start_pos:start_pos+T, :].uop.store(Tensor.stack(k, v).uop)))
+    k = assigned_kv[0, :, :, 0:start_pos+T, :]
+    v = assigned_kv[1, :, :, 0:start_pos+T, :]
     mask = Tensor.full((1, 1, T, start_pos+T), float("-inf"), dtype=x.dtype, buffer=False).triu(start_pos+1) \
       if resolve(T != 1) else None
-    attn = q.scaled_dot_product_attention(k_full, v_full, attn_mask=mask, enable_gqa=True)
-    attn = attn.transpose(1, 2).reshape(B, T, -1)
+    attn = q.scaled_dot_product_attention(k, v, attn_mask=mask, enable_gqa=True)     # (B,H,T,Hd)
+    attn = attn.transpose(1, 2).reshape(B, T, -1)                                    # back to (B,T,D)
     return self.attn_output(attn if not self.config.attn_output_gate else (attn * gate.sigmoid()))
 
   def _state_reset_ops(self):
-    if not hasattr(self, "kv_cache"): return []
-    self.kv_cache.pages, self.kv_cache.free_pages = [], set(range(self.kv_cache.max_pages))
-    return [self.kv_cache.cache_kv.assign(self.kv_cache.cache_kv.const_like(0))]
+    if not hasattr(self, "kv"): return []
+    self.kv.pages, self.kv.free_pages = [], set(range(self.kv.max_pages))
+    return [self.kv.cache.assign(self.kv.cache.const_like(0))]
 
-  def _init_state(self, x:Tensor):
-    if not hasattr(self, "kv_cache"):
-      self.kv_cache = KVCache(self.config.page_size, self.config.max_pages, self.config.n_kv_heads, self.config.head_dim, self.config.max_context, device=x.device)
+  def _init_state(self, x:Tensor, start_pos:int|UOp):
+    if not hasattr(self, "kv"):
+      self.kv = PagedKVCache(self.config.page_size, self.config.max_pages, self.config.n_kv_heads, self.config.head_dim, self.config.max_context, device=x.device)
       self.freqs_cis = precompute_freqs_cis(self.config.rope_dim, self.config.max_context, self.config.rope_theta, device=x.device)
-
-  def __call__(self, x:Tensor, start_pos:int|UOp):
-    self._init_state(x)
     sp = start_pos.val if hasattr(start_pos, 'val') else start_pos
     T = x.shape[1].val if hasattr(x.shape[1], 'val') else x.shape[1]
-    self.kv_cache.allocate(sp, T)
-    return super().__call__(x, start_pos)
-
+    self.kv.allocate(sp, T)
 
 class MLATransformerBlock(FFNBlock):
   def __init__(self, config:TransformerConfig):
@@ -247,7 +242,7 @@ class MLATransformerBlock(FFNBlock):
     attn = ((attn @ v) @ self.attn_v_b["weight"].transpose(-1, -2)).transpose(1, 2).reshape(B, T, -1)
     return self.attn_output(attn)
 
-  def _init_state(self, x:Tensor):
+  def _init_state(self, x:Tensor, start_pos:int|UOp):
     if not hasattr(self, "cache_k"):
       self.cache_k = Tensor.empty(x.shape[0], 1, self.config.max_context, self.config.kv_lora_rank + self.config.rope_dim, device=x.device)
       self.freqs_cis = precompute_freqs_cis(self.config.rope_dim, self.config.max_context, self.config.rope_theta, device=x.device)
