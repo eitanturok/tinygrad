@@ -1,7 +1,7 @@
 from __future__ import annotations
 import functools, itertools, pathlib, math
 from dataclasses import dataclass, replace
-from tinygrad import Tensor, nn, UOp, TinyJit, getenv, function
+from tinygrad import Tensor, nn, UOp, TinyJit, getenv, function, dtypes
 from tinygrad.llm.gguf import gguf_load
 from tinygrad.uop.ops import resolve
 
@@ -139,14 +139,30 @@ class FFNBlock:
     return _run(x, start_pos)
 
 class PagedKVCache:
-  def __init__(self, page_size:int, max_pages:int, n_kv_heads:int, head_dim:int, max_context:int, device:str|None=None):
+  def __init__(self, page_size:int, max_pages:int, n_kv_heads:int, head_dim:int, device:str|None=None):
     self.max_pages, self.page_size = max_pages, page_size
     self.pages, self.free_pages = [], set(range(max_pages))
-    self.cache = Tensor.zeros(2, 1, n_kv_heads, max_context, head_dim, device=device).contiguous()
+    self.cache = Tensor.zeros(2, max_pages * page_size, n_kv_heads, head_dim, device=device).contiguous()
+    self.page_table = Tensor.zeros(max_pages, dtype=dtypes.int32, device=device).contiguous()
   def allocate(self, start_pos:int, T:int):
     new_pages = math.ceil((start_pos + T) / self.page_size)
     assert new_pages <= self.max_pages, f"Need {new_pages} pages but max_pages={self.max_pages}"
     while len(self.pages) < new_pages: self.pages.append(self.free_pages.pop())
+    self.page_table.assign(Tensor(self.pages + [0] * (self.max_pages - len(self.pages)), dtype=dtypes.int32))
+  def write(self, k:Tensor, v:Tensor, start_pos:int|UOp, T:int|UOp) -> Tensor:
+    # map logical positions to flat physical indices: phys_page * page_size + slot
+    positions = Tensor.arange(start_pos, start_pos + T)
+    flat_idx = self.page_table[(positions // self.page_size).cast(dtypes.int32)] * self.page_size + (positions % self.page_size).cast(dtypes.int32)  # (T,)
+    # cache[:, flat_idx, :, :] → (2, T, n_kv_heads, head_dim); kv must match
+    kv = Tensor.stack(k.squeeze(0).transpose(0, 1), v.squeeze(0).transpose(0, 1))  # (2, T, n_kv_heads, head_dim)
+    return Tensor(self.cache.uop.after(self.cache[:, flat_idx, :, :].uop.store(kv.uop)))
+  def read(self, cache:Tensor, start_pos:int|UOp, T:int|UOp) -> tuple[Tensor, Tensor]:
+    # map all logical positions 0..start_pos+T to flat physical indices via page_table
+    positions = Tensor.arange(start_pos + T)
+    flat_idx = self.page_table[(positions // self.page_size).cast(dtypes.int32)] * self.page_size + (positions % self.page_size).cast(dtypes.int32)
+    out = cache[:, flat_idx, :, :]                                       # (2, start_pos+T, n_kv_heads, head_dim)
+    return out[0].transpose(0, 1).unsqueeze(0), out[1].transpose(0, 1).unsqueeze(0)  # (1, n_kv_heads, start_pos+T, head_dim)
+
 
 class TransformerBlock(FFNBlock):
   def __init__(self, config:TransformerConfig):
@@ -178,9 +194,8 @@ class TransformerBlock(FFNBlock):
     q = apply_rope(q[..., :self.config.rope_dim], self.freqs_cis[start_pos:start_pos+T]).cat(q[..., self.config.rope_dim:], dim=-1)
     k = apply_rope(k[..., :self.config.rope_dim], self.freqs_cis[start_pos:start_pos+T]).cat(k[..., self.config.rope_dim:], dim=-1)
 
-    assigned_kv = Tensor(self.kv.cache.uop.after(self.kv.cache[:, :, :, start_pos:start_pos+T, :].uop.store(Tensor.stack(k, v).uop)))
-    k = assigned_kv[0, :, :, 0:start_pos+T, :]
-    v = assigned_kv[1, :, :, 0:start_pos+T, :]
+    cache = self.kv.write(k, v, start_pos, T)
+    k, v = self.kv.read(cache, start_pos, T)
     mask = Tensor.full((1, 1, T, start_pos+T), float("-inf"), dtype=x.dtype, buffer=False).triu(start_pos+1) \
       if resolve(T != 1) else None
     attn = q.scaled_dot_product_attention(k, v, attn_mask=mask, enable_gqa=True)     # (B,H,T,Hd)
@@ -190,11 +205,11 @@ class TransformerBlock(FFNBlock):
   def _state_reset_ops(self):
     if not hasattr(self, "kv"): return []
     self.kv.pages, self.kv.free_pages = [], set(range(self.kv.max_pages))
-    return [self.kv.cache.assign(self.kv.cache.const_like(0))]
+    return [self.kv.cache.assign(self.kv.cache.const_like(0)), self.kv.page_table.assign(self.kv.page_table.const_like(0))]
 
   def _init_state(self, x:Tensor, start_pos:int|UOp):
     if not hasattr(self, "kv"):
-      self.kv = PagedKVCache(self.config.page_size, self.config.max_pages, self.config.n_kv_heads, self.config.head_dim, self.config.max_context, device=x.device)
+      self.kv = PagedKVCache(self.config.page_size, self.config.max_pages, self.config.n_kv_heads, self.config.head_dim, device=x.device)
       self.freqs_cis = precompute_freqs_cis(self.config.rope_dim, self.config.max_context, self.config.rope_theta, device=x.device)
     sp = start_pos.val if hasattr(start_pos, 'val') else start_pos
     T = x.shape[1].val if hasattr(x.shape[1], 'val') else x.shape[1]
