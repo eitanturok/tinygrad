@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from tinygrad import Tensor, nn, UOp, TinyJit, getenv, function, dtypes
 from tinygrad.llm.gguf import gguf_load
 from tinygrad.uop.ops import resolve
+from tinygrad.helpers import profile_marker
 
 @functools.cache
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, device:str|None=None) -> Tensor:
@@ -72,7 +73,7 @@ class TransformerConfig:
   qkv_bias: bool = False
   expert_bias: bool = False
   max_pages: int = 8
-  page_size: int = 32
+  page_size: int = 4
 
 class FFNBlock:
   def __init__(self, config:TransformerConfig):
@@ -142,14 +143,18 @@ class PagedKVCache:
   def __init__(self, page_size:int, max_pages:int, n_kv_heads:int, head_dim:int, device:str|None=None):
     self.max_pages, self.page_size = max_pages, page_size
     self.pages, self.free_pages = [], set(range(max_pages))
+    profile_marker('init kv cache')
     self.cache = Tensor.zeros(2, max_pages * page_size, n_kv_heads, head_dim, device=device).contiguous()
     self.page_table = Tensor.zeros(max_pages, dtype=dtypes.int32, device=device).contiguous()
   def allocate(self, start_pos:int, T:int):
     new_pages = math.ceil((start_pos + T) / self.page_size)
     assert new_pages <= self.max_pages, f"Need {new_pages} pages but max_pages={self.max_pages}"
+    print(f"Allocating KV cache for positions {start_pos}..{start_pos+T-1} ({new_pages} pages)")
+    profile_marker(f'allocate kv cache for {start_pos}..{start_pos+T-1}')
     while len(self.pages) < new_pages: self.pages.append(self.free_pages.pop())
     self.page_table.assign(Tensor(self.pages + [0] * (self.max_pages - len(self.pages)), dtype=dtypes.int32))
   def write(self, k:Tensor, v:Tensor, start_pos:int|UOp, T:int|UOp) -> Tensor:
+    profile_marker(f'write kv cache for {start_pos}..{start_pos+T-1}')
     # map logical positions to flat physical indices: phys_page * page_size + slot
     positions = Tensor.arange(start_pos, start_pos + T)
     flat_idx = self.page_table[(positions // self.page_size).cast(dtypes.int32)] * self.page_size + (positions % self.page_size).cast(dtypes.int32)  # (T,)
@@ -157,6 +162,7 @@ class PagedKVCache:
     kv = Tensor.stack(k.squeeze(0).transpose(0, 1), v.squeeze(0).transpose(0, 1))  # (2, T, n_kv_heads, head_dim)
     return Tensor(self.cache.uop.after(self.cache[:, flat_idx, :, :].uop.store(kv.uop)))
   def read(self, cache:Tensor, start_pos:int|UOp, T:int|UOp) -> tuple[Tensor, Tensor]:
+    profile_marker(f'read kv cache for {start_pos}..{start_pos+T-1}')
     # map all logical positions 0..start_pos+T to flat physical indices via page_table
     positions = Tensor.arange(start_pos + T)
     flat_idx = self.page_table[(positions // self.page_size).cast(dtypes.int32)] * self.page_size + (positions % self.page_size).cast(dtypes.int32)
