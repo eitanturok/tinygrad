@@ -188,6 +188,7 @@ def main():
   parser.add_argument("--serve", nargs='?', type=int, const=8000, metavar="PORT", help="Run OpenAI compatible API (optional port, default 8000)")
   parser.add_argument("--warmup", action="store_true", help="warmup the JIT")
   parser.add_argument("--benchmark", nargs='?', type=int, const=20, metavar="COUNT", help="Benchmark tok/s (optional count, default 20)")
+  parser.add_argument("--prompt", type=str, default=None, help="A prompt")
   args = parser.parse_args()
 
   # load the model
@@ -223,13 +224,16 @@ def main():
   ids: list[int] = tok.prefix()
   while 1:
     try:
-      ids += tok.role("user") + tok.encode(input('>>> ')) + tok.end_turn() + tok.role("assistant")
+      ids += tok.role("user") + tok.encode(args.prompt or input('>>> ')) + tok.end_turn() + tok.role("assistant")
     except EOFError:
       break
     dec = tok.stream_decoder()
-    for next_id in model.generate(ids):
-      sys.stdout.write(dec(next_id) if not tok.is_end(next_id) else dec() + "\n\n")
+    for next_ids in model.generate(ids):
+      print(f"{next_ids=}")
+      for next_id in next_ids: sys.stdout.write(dec(next_id) if not tok.is_end(next_id) else dec() + "\n\n")
       sys.stdout.flush()
-      if tok.is_end(next_id): break
+      if any(tok.is_end(next_id) for next_id in next_ids):
+        break
+    if args.prompt: break
 
 if __name__ == "__main__": main()

@@ -305,7 +305,7 @@ class Transformer:
     self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
     self.max_context = config.max_context
     self.has_recurrent_block = any(isinstance(b, GatedDeltaNetBlock) for b in self.blk)
-    self._cached_tokens: list[int] = []
+    self._cached_tokens: list[list[int]] = [[], []]
     # we specialize the JIT for prefill and rollout
     self.prefill_jit = TinyJit(self.forward)
     self.rollout_jit = TinyJit(self.forward)
@@ -389,28 +389,34 @@ class Transformer:
       Tensor.realize(*params)
     return model, kv
 
-  def get_start_pos(self, tokens:list[int]) -> int:
-    prefix_len = sum(1 for _ in itertools.takewhile(lambda ab: ab[0] == ab[1], zip(tokens[:-1], self._cached_tokens)))
-    return min(block._reusable_prefix_len(prefix_len, len(self._cached_tokens)) for block in self.blk)
+  def get_start_pos(self, tokens:list[list[int]]) -> int:
+    print(f"{tokens[0][:-1]=}")
+    print(f"{self._cached_tokens=}")
+    prefix_len = sum(1 for _ in itertools.takewhile(lambda ab: ab[0] == ab[1], zip(tokens[0][:-1], self._cached_tokens[0])))
+    return min(block._reusable_prefix_len(prefix_len, len(self._cached_tokens[0])) for block in self.blk)
 
   def generate(self, tokens:list[int], chunk_size:int=32, temperature:float=0.0):
+    tokens: list[list[int]] = [tokens, tokens]
+    print(f"{tokens=}")
     if self.has_recurrent_block: chunk_size = 1
     v_start_pos = UOp.variable("start_pos", 0, self.max_context-1)
     v_toks = UOp.variable("toks", 1, chunk_size)
     # TODO: use UOp.variable for temperature once float variables are supported
     temp = Tensor([temperature])
     # assign all input tokens once, then slice from start_pos for the model call
-    t = Tensor(tokens + [0] * (self.max_context - len(tokens)), dtype="int32").reshape(1, self.max_context)
+    t = Tensor([seq + [0] * (self.max_context - len(seq)) for seq in tokens], dtype="int32").reshape(2, self.max_context)
+    print(f"t={t.realize()}")
     # recompute start_pos from what's currently valid in the caches
     start_pos = self.get_start_pos(tokens)
-    if start_pos < len(self._cached_tokens) and (resets := [r for b in self.blk for r in b._state_reset_ops()]): Tensor.realize(*resets)
-    out, prompt_len = None, len(tokens)
-    while len(tokens) < self.max_context:
-      sp, nt = v_start_pos.bind(start_pos), v_toks.bind(min(chunk_size, len(tokens) - start_pos))
+    if start_pos < len(self._cached_tokens[0]) and (resets := [r for b in self.blk for r in b._state_reset_ops()]): Tensor.realize(*resets)
+    out, prompt_len = None, len(tokens[0])
+    while len(tokens[0]) < self.max_context:
+      sp, nt = v_start_pos.bind(start_pos), v_toks.bind(min(chunk_size, len(tokens[0]) - start_pos))
       out = self(t[:, sp:sp+nt] if start_pos < prompt_len or out is None else out, sp, temp).realize()
+      print(f"{out=}")
       start_pos += nt.val
       # chunked prefill: keep processing until all prompt tokens are consumed
-      if start_pos < len(tokens): continue
-      tokens.append(int(out.item()))
-      self._cached_tokens = tokens[:-1]
-      yield tokens[-1]
+      if start_pos < len(tokens[0]): continue
+      for i in range(2): tokens[i].append(out[i].item())
+      self._cached_tokens = [seq[:-1] for seq in tokens]
+      yield [seq[-1] for seq in tokens]
