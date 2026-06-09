@@ -224,13 +224,27 @@ def main():
   ids: list[int] = tok.prefix()
   while 1:
     try:
-      ids += tok.role("user") + tok.encode(args.prompt or input('>>> ')) + tok.end_turn() + tok.role("assistant")
+      prompt1 = "Hi"
+      prompt2 = "What is the capital of france?\n"
+      ids1 = tok.prefix() + tok.role("user") + tok.encode(prompt1) + tok.end_turn() + tok.role("assistant")
+      ids2 = tok.prefix() + tok.role("user") + tok.encode(prompt2) + tok.end_turn() + tok.role("assistant")
+      ids = [ids1, ids2]
+      print(f"{len(ids1)=}\t{prompt1=}")
+      print(f"{len(ids2)=}\t{prompt2=}")
+      print(f"{ids=}")
+      # ids += tok.role("user") + tok.encode(args.prompt or input('>>> ')) + tok.end_turn() + tok.role("assistant")
     except EOFError:
       break
     dec = tok.stream_decoder()
     for next_ids in model.generate(ids):
-      print(f"{next_ids=}")
-      for next_id in next_ids: sys.stdout.write(dec(next_id) if not tok.is_end(next_id) else dec() + "\n\n")
+      # print(f"{next_ids=}")
+      pretty_len = 0
+      for next_id in next_ids:
+        pretty_next_id = repr(dec(next_id) if not tok.is_end(next_id) else dec() + "\n\n")
+        sys.stdout.write(pretty_next_id)
+        pretty_len += len(pretty_next_id)
+        sys.stdout.write(" "*(16 - pretty_len))
+      sys.stdout.write("\n")
       sys.stdout.flush()
       if any(tok.is_end(next_id) for next_id in next_ids):
         break

@@ -390,33 +390,32 @@ class Transformer:
     return model, kv
 
   def get_start_pos(self, tokens:list[list[int]]) -> int:
-    print(f"{tokens[0][:-1]=}")
-    print(f"{self._cached_tokens=}")
+    # print(f"{tokens[0][:-1]=}")
+    # print(f"{self._cached_tokens=}")
     prefix_len = sum(1 for _ in itertools.takewhile(lambda ab: ab[0] == ab[1], zip(tokens[0][:-1], self._cached_tokens[0])))
     return min(block._reusable_prefix_len(prefix_len, len(self._cached_tokens[0])) for block in self.blk)
 
-  def generate(self, tokens:list[int], chunk_size:int=32, temperature:float=0.0):
-    tokens: list[list[int]] = [tokens, tokens]
-    print(f"{tokens=}")
+  def generate(self, seqs:list[int]|list[list[int]], chunk_size:int=32, temperature:float=0.0):
     if self.has_recurrent_block: chunk_size = 1
+    seq_lens = [len(seq) for seq in seqs]
     v_start_pos = UOp.variable("start_pos", 0, self.max_context-1)
     v_toks = UOp.variable("toks", 1, chunk_size)
     # TODO: use UOp.variable for temperature once float variables are supported
     temp = Tensor([temperature])
     # assign all input tokens once, then slice from start_pos for the model call
-    t = Tensor([seq + [0] * (self.max_context - len(seq)) for seq in tokens], dtype="int32").reshape(2, self.max_context)
-    print(f"t={t.realize()}")
+    t = Tensor([seq + [0] * (self.max_context - len(seq)) for seq in seqs], dtype="int32").reshape(2, self.max_context)
+    print(f"{t.numpy()=}")
+    # print(f"t={t.realize()}")
     # recompute start_pos from what's currently valid in the caches
-    start_pos = self.get_start_pos(tokens)
+    start_pos = self.get_start_pos(seqs)
     if start_pos < len(self._cached_tokens[0]) and (resets := [r for b in self.blk for r in b._state_reset_ops()]): Tensor.realize(*resets)
-    out, prompt_len = None, len(tokens[0])
-    while len(tokens[0]) < self.max_context:
-      sp, nt = v_start_pos.bind(start_pos), v_toks.bind(min(chunk_size, len(tokens[0]) - start_pos))
-      out = self(t[:, sp:sp+nt] if start_pos < prompt_len or out is None else out, sp, temp).realize()
-      print(f"{out=}")
+    out, max_seq_len = None, max([len(seq) for seq in seqs])
+    while len(seqs[0]) < self.max_context:
+      sp, nt = v_start_pos.bind(start_pos), v_toks.bind(min(chunk_size, max([len(seq) for seq in seqs]) - start_pos))
+      out = self(t[:, sp:sp+nt] if start_pos < max_seq_len or out is None else out, sp, temp).realize()
       start_pos += nt.val
       # chunked prefill: keep processing until all prompt tokens are consumed
-      if start_pos < len(tokens[0]): continue
-      for i in range(2): tokens[i].append(out[i].item())
-      self._cached_tokens = [seq[:-1] for seq in tokens]
-      yield [seq[-1] for seq in tokens]
+      if start_pos < max_seq_len: continue
+      for i, seq in enumerate(seqs): seq.append(out[i].item())
+      self._cached_tokens = [seq[:-1] for seq in seqs]
+      yield [seq[-1] for seq in seqs]
