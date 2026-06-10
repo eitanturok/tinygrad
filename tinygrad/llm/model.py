@@ -390,8 +390,7 @@ class Transformer:
     return model, kv
 
   def get_start_pos(self, tokens:list[list[int]]) -> int:
-    # print(f"{tokens[0][:-1]=}")
-    # print(f"{self._cached_tokens=}")
+    # todo: start_pos should depend on all seqs, not just seqs[0]
     prefix_len = sum(1 for _ in itertools.takewhile(lambda ab: ab[0] == ab[1], zip(tokens[0][:-1], self._cached_tokens[0])))
     return min(block._reusable_prefix_len(prefix_len, len(self._cached_tokens[0])) for block in self.blk)
 
