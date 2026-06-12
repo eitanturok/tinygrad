@@ -32,16 +32,16 @@ def precompute_positions(end:int, device:str|None=None) -> Tensor:
   return Tensor.arange(end, dtype="int32").reshape(1, 1, 1, end).clone(device)
 
 def make_attn_mask(positions:Tensor, pad_lens:Tensor, start_pos:int|UOp, T:int|UOp, dtype) -> Tensor:
-  # additive attention mask (B,1,T,L) over L = start_pos+T keys: -inf where forbidden, 0 where allowed
+  # attention mask (B,1,T,L) where L = start_pos+T and -inf where forbidden 0 where allowed
   key_pos   = positions[:, :, :, 0:start_pos+T]                           # (1,1,1,L)
   query_pos = positions[:, :, :, start_pos:start_pos+T].transpose(2, 3)   # (1,1,T,1)
   # left pads to handle multiple sequences with different prompt lengths
-  pad_mask    = key_pos < pad_lens.reshape(-1, 1, 1, 1)  # key is the row's left-padding        (B,1,1,L)
+  pad_mask = key_pos < pad_lens.reshape(-1, 1, 1, 1)                      # (B,1,1,L)
   # lower triangular pad so we don't look at future tokens
-  causal_mask = key_pos > query_pos                      # key is in the query's future         (1,1,T,L)
-  self_mask   = key_pos == query_pos                     # a query always sees its own position (1,1,T,L)
-  # NOTE: without the self_mask exception, pad-query rows are fully masked and softmax(all -inf) is NaN
-  return ((pad_mask | causal_mask) & ~self_mask).where(-float("inf"), 0).cast(dtype)
+  causal_mask = key_pos > query_pos                                       # (1,1,T,L)
+  # without ~self_mask, some rows are fully masked and softmax(all -inf) is NaN
+  self_mask   = key_pos == query_pos                                      # (1,1,T,L)
+  return ((pad_mask | causal_mask) & ~self_mask).where(-float("inf"), 0).cast(dtype) # (B,1,T,L)
 
 @functools.cache
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, device:str|None=None) -> Tensor:
