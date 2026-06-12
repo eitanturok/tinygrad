@@ -71,3 +71,28 @@ If we swithc so first seq is longest instead of second, then it will break too.
 How doe sthis even work now?
 
 
+I want to print out the attn mask to make sure it handles multiple batches correctly.
+But
+```py
+print(mask.numpy())
+```
+gives
+```py
+  File "/Users/eitanturok/tinygrad/tinygrad/tensor.py", line 351, in numpy
+    assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
+AssertionError: no data if shape is symbolic, self.shape=(1, 1, UOp(Ops.BIND, dtypes.weakint, arg=None, src=(
+  UOp(Ops.DEFINE_VAR, dtypes.weakint, arg=('toks', 1, 32), src=()),
+  UOp(Ops.CONST, dtypes.weakint, arg=17, src=()),)), UOp(Ops.ADD, dtypes.weakint, arg=None, src=(
+  UOp(Ops.BIND, dtypes.weakint, arg=None, src=(
+    UOp(Ops.DEFINE_VAR, dtypes.weakint, arg=('start_pos', 0, 4095), src=()),
+    UOp(Ops.CONST, dtypes.weakint, arg=0, src=()),)),
+  UOp(Ops.BIND, dtypes.weakint, arg=None, src=(
+    UOp(Ops.DEFINE_VAR, dtypes.weakint, arg=('toks', 1, 32), src=()),
+    UOp(Ops.CONST, dtypes.weakint, arg=17, src=()),)),)))
+```
+because `mask` is defined as
+```py
+mask = Tensor.full((1, 1, T, start_pos+T), float("-inf"), dtype=x.dtype, buffer=False).triu(start_pos+1) \
+    if resolve(T != 1) else None
+```
+How do I resolve the dimensions of mask before calling numpy?

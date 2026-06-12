@@ -1218,6 +1218,23 @@ class Tensor(RandMixin):
     if attn_mask is not None:
       if attn_mask.dtype == dtypes.bool: attn_mask = attn_mask.where(0, -float("inf"))
       qk = qk + attn_mask
+    try: from tinygrad.llm.model import _debug_first_layer, resolve_symbolic
+    except ImportError: _debug_first_layer = False
+    if _debug_first_layer:
+      # show the full LxL mask per batch row: rows for already-cached positions are reconstructed as causal,
+      # the last T rows are this call's actual mask (all-zeros if attn_mask is None)
+      import numpy as np
+      eff = resolve_symbolic((attn_mask if attn_mask is not None else qk.const_like(0)).expand(qk.shape)[:, 0])  # (B, T, L)
+      if isinstance(eff, np.ndarray):
+        fmt = lambda v: ' -inf' if v == -np.inf else ('  MIN' if v < -1e30 else f'{v:5.0f}')
+        for i, m in enumerate(eff):
+          hist = np.triu(np.full((m.shape[1]-m.shape[0], m.shape[1]), -np.inf, dtype=m.dtype), 1)
+          hist[:, m[-1] < -1e30] = -np.inf       # carry pad columns (forbidden in the actual rows) into reconstructed rows
+          np.fill_diagonal(hist, 0)              # a query always sees its own position (mirrors the model's self_mask)
+          full = np.concatenate([hist, m], axis=0)
+          header = '     ' + ''.join(f'{j:5d}' for j in range(full.shape[1]))
+          body = '\n'.join(f'{r:4d} ' + ''.join(fmt(v) for v in row) for r, row in enumerate(full))
+          print(f'attn_mask[seq={i}]:\n{header}\n{body}\n')
     return qk.cast(self.dtype).softmax(-1).dropout(dropout_p) @ value
 
   # ***** cast ops *****
