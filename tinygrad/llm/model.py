@@ -433,25 +433,24 @@ class Transformer:
     return min(block._reusable_prefix_len(prefix_len, len(self._cached_tokens[0])) for block in self.blk)
 
   def generate(self, seqs:list[int]|list[list[int]], chunk_size:int=32, temperature:float=0.0):
-    # accept a flat list[int] as a batch of one; yield scalars for it, lists otherwise
-    if flat := (len(seqs) > 0 and isinstance(seqs[0], int)): seqs = [seqs]
     if self.has_recurrent_block: chunk_size = 1
-    v_start_pos = UOp.variable("start_pos", 0, self.max_context-1)
-    v_toks = UOp.variable("toks", 1, chunk_size)
     # TODO: use UOp.variable for temperature once float variables are supported
     temp = Tensor([temperature])
-    # left-pad shorter prompts so all rows end at max_seq_len: positions stay aligned across the batch,
-    # logits[:, -1] is every row's real last token, and RoPE relative distances are unaffected
+
+    # left-pad prompts
+    if isinstance(seqs[0], int): seqs = [seqs]
     max_seq_len = max(len(seq) for seq in seqs)
     pads = [max_seq_len - len(seq) for seq in seqs]
     rows = [[0]*pad + seq for pad, seq in zip(pads, seqs)]
     # assign all input tokens once, then slice from start_pos for the model call
     t = Tensor([row + [0] * (self.max_context - max_seq_len) for row in rows], dtype="int32")
-    t = Tensor([row + [0] * (self.max_context - max_seq_len) for row in rows], dtype="int32")
     pad_lens = Tensor(pads, dtype="int32")
     # recompute start_pos from what's currently valid in the caches
     start_pos = self.get_start_pos(rows)
     if start_pos < len(self._cached_tokens[0]) and (resets := [r for b in self.blk for r in b._state_reset_ops()]): Tensor.realize(*resets)
+
+    v_start_pos = UOp.variable("start_pos", 0, self.max_context-1)
+    v_toks = UOp.variable("toks", 1, chunk_size)
     out = None
     while len(rows[0]) < self.max_context:
       sp, nt = v_start_pos.bind(start_pos), v_toks.bind(min(chunk_size, len(rows[0]) - start_pos))
@@ -461,4 +460,4 @@ class Transformer:
       if start_pos < max_seq_len: continue
       for i, seq in enumerate(seqs): seq.append(tok := out[i].item()); rows[i].append(tok)
       self._cached_tokens = [row[:-1] for row in rows]
-      yield seqs[0][-1] if flat else [seq[-1] for seq in seqs]
+      yield [seq[-1] for seq in seqs]
